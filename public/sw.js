@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pwa-cache-v1';
+const CACHE_NAME = 'pwa-cache-v2';
 
 const PRECACHE_URLS = [
   '/',
@@ -40,13 +40,28 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return;
 
+  const url = new URL(request.url);
+
+  // Never cache API, Supabase, authentication, or admin data.
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.hostname.includes('supabase.co') ||
+    url.pathname.includes('/auth/')
+  ) {
+    return;
+  }
+
+  // Navigation: network first, offline fallback.
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/offline.html'))
+      fetch(request).catch(() =>
+        caches.match('/offline.html')
+      )
     );
     return;
   }
 
+  // Static resources: cache first, then network.
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       if (cachedResponse) return cachedResponse;
