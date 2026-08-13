@@ -69,9 +69,7 @@ export default function RegisterPage() {
       }
 
       /*
-       * The access key is claimed only after Supabase creates the
-       * authenticated user. The database function uses auth.uid()
-       * internally, so the student cannot claim access for another user.
+       * If Supabase immediately creates a session, claim the access key.
        */
       if (data.session) {
         const { error: accessError } = await supabase.rpc(
@@ -93,8 +91,8 @@ export default function RegisterPage() {
       }
 
       /*
-       * If email confirmation is enabled, Supabase may create the
-       * account without creating a session immediately.
+       * If email confirmation is enabled, the user must confirm
+       * their email before a session exists.
        */
       router.push('/login?registered=1&confirm=1');
     } catch {
@@ -251,4 +249,4 @@ export default function RegisterPage() {
       </p>
     </div>
   );
-}
+          }
