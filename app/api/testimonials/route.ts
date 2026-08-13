@@ -12,6 +12,20 @@ const testimonialSchema = z.object({
   is_published: z.boolean().default(true),
 });
 
+function getSupabaseProjectHost() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  if (!url) {
+    return 'SUPABASE URL NOT SET';
+  }
+
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'INVALID SUPABASE URL';
+  }
+}
+
 export async function GET() {
   try {
     const admin = createAdminClient();
@@ -26,7 +40,10 @@ export async function GET() {
       console.error('TESTIMONIAL GET ERROR:', error);
 
       return NextResponse.json(
-        { error: 'Could not load testimonials.' },
+        {
+          error: error.message || 'Could not load testimonials.',
+          supabase_project: getSupabaseProjectHost(),
+        },
         { status: 500 }
       );
     }
@@ -38,7 +55,10 @@ export async function GET() {
     console.error('TESTIMONIAL GET EXCEPTION:', error);
 
     return NextResponse.json(
-      { error: 'Could not load testimonials.' },
+      {
+        error: 'Could not load testimonials.',
+        supabase_project: getSupabaseProjectHost(),
+      },
       { status: 500 }
     );
   }
@@ -59,7 +79,6 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => null);
-
     const parsed = testimonialSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -69,9 +88,7 @@ export async function POST(request: Request) {
       );
 
       return NextResponse.json(
-        {
-          error: 'Invalid testimonial information.',
-        },
+        { error: 'Invalid testimonial information.' },
         { status: 400 }
       );
     }
@@ -103,9 +120,8 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          error:
-            error.message ||
-            'Could not save testimonial.',
+          error: error.message || 'Could not save testimonial.',
+          supabase_project: getSupabaseProjectHost(),
         },
         { status: 500 }
       );
@@ -121,6 +137,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: 'Something went wrong while saving the testimonial.',
+        supabase_project: getSupabaseProjectHost(),
       },
       { status: 500 }
     );
