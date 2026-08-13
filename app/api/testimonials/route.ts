@@ -12,38 +12,27 @@ const testimonialSchema = z.object({
   is_published: z.boolean().default(true),
 });
 
-function getSupabaseProjectHost() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  if (!url) {
-    return 'SUPABASE URL NOT SET';
-  }
-
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return 'INVALID SUPABASE URL';
-  }
-}
-
 export async function GET() {
   try {
     const admin = createAdminClient();
 
     const { data, error } = await admin
+      .schema('public')
       .from('testimonials')
       .select('*')
       .order('year', { ascending: false })
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('TESTIMONIAL GET ERROR:', error);
+      console.error('TESTIMONIAL GET ERROR:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
 
       return NextResponse.json(
-        {
-          error: error.message || 'Could not load testimonials.',
-          supabase_project: getSupabaseProjectHost(),
-        },
+        { error: 'Could not load testimonials.' },
         { status: 500 }
       );
     }
@@ -55,10 +44,7 @@ export async function GET() {
     console.error('TESTIMONIAL GET EXCEPTION:', error);
 
     return NextResponse.json(
-      {
-        error: 'Could not load testimonials.',
-        supabase_project: getSupabaseProjectHost(),
-      },
+      { error: 'Could not load testimonials.' },
       { status: 500 }
     );
   }
@@ -105,6 +91,7 @@ export async function POST(request: Request) {
     };
 
     const { data, error } = await admin
+      .schema('public')
       .from('testimonials')
       .insert(testimonialData)
       .select('*')
@@ -119,10 +106,7 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(
-        {
-          error: error.message || 'Could not save testimonial.',
-          supabase_project: getSupabaseProjectHost(),
-        },
+        { error: error.message || 'Could not save testimonial.' },
         { status: 500 }
       );
     }
@@ -135,10 +119,7 @@ export async function POST(request: Request) {
     console.error('TESTIMONIAL POST EXCEPTION:', error);
 
     return NextResponse.json(
-      {
-        error: 'Something went wrong while saving the testimonial.',
-        supabase_project: getSupabaseProjectHost(),
-      },
+      { error: 'Something went wrong while saving the testimonial.' },
       { status: 500 }
     );
   }
