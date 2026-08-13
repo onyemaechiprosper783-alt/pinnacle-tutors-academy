@@ -32,7 +32,12 @@ export async function GET() {
       });
 
       return NextResponse.json(
-        { error: 'Could not load testimonials.' },
+        {
+          error: error.message || 'Could not load testimonials.',
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
         { status: 500 }
       );
     }
@@ -44,7 +49,9 @@ export async function GET() {
     console.error('TESTIMONIAL GET EXCEPTION:', error);
 
     return NextResponse.json(
-      { error: 'Could not load testimonials.' },
+      {
+        error: 'Could not load testimonials.',
+      },
       { status: 500 }
     );
   }
@@ -74,7 +81,9 @@ export async function POST(request: Request) {
       );
 
       return NextResponse.json(
-        { error: 'Invalid testimonial information.' },
+        {
+          error: 'Invalid testimonial information.',
+        },
         { status: 400 }
       );
     }
@@ -106,20 +115,29 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(
-        { error: error.message || 'Could not save testimonial.' },
+        {
+          error: error.message || 'Could not save testimonial.',
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
         { status: 500 }
       );
     }
 
     return NextResponse.json(
-      { testimonial: data },
+      {
+        testimonial: data,
+      },
       { status: 201 }
     );
   } catch (error) {
     console.error('TESTIMONIAL POST EXCEPTION:', error);
 
     return NextResponse.json(
-      { error: 'Something went wrong while saving the testimonial.' },
+      {
+        error: 'Something went wrong while saving the testimonial.',
+      },
       { status: 500 }
     );
   }
