@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getCurrentProfile } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 const QUICK_ACTIONS = [
   {
@@ -67,11 +68,40 @@ const MORE_FEATURES = [
   },
 ];
 
+type Testimonial = {
+  id: string;
+  student_name: string;
+  exam_type: 'jamb' | 'waec';
+  score: string;
+  year: number;
+  message: string;
+};
+
 export default async function StudentDashboard() {
   const profile = await getCurrentProfile();
 
   const firstName = profile?.full_name?.split(' ')[0] || 'Student';
   const examTarget = profile?.exam_target || 'JAMB / WAEC';
+
+  let testimonials: Testimonial[] = [];
+
+  try {
+    const admin = createAdminClient();
+
+    const { data } = await admin
+      .from('testimonials')
+      .select(
+        'id, student_name, exam_type, score, year, message'
+      )
+      .eq('is_published', true)
+      .order('year', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(6);
+
+    testimonials = (data ?? []) as Testimonial[];
+  } catch {
+    testimonials = [];
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-6">
@@ -200,38 +230,105 @@ export default async function StudentDashboard() {
         </div>
       </section>
 
-      {/* TESTIMONIAL PLACEHOLDER */}
-      <section className="overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50 p-6">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+      {/* SUCCESS STORIES */}
+      <section>
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-600">
+              Real Results
+            </p>
 
-          <div className="flex gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 text-2xl">
-              ⭐
-            </div>
+            <h2 className="mt-1 text-2xl font-black text-slate-900">
+              Pinnacle Success Stories ⭐
+            </h2>
 
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-600">
-                Pinnacle Success Story
-              </p>
-
-              <p className="mt-2 text-base font-bold leading-6 text-slate-800">
-                “Your success story could be next.”
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Prepare consistently with Pinnacle Tutors Academy.
-              </p>
-            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              Students who prepared, stayed consistent and achieved their goals.
+            </p>
           </div>
 
           <Link
             href="/community"
-            className="shrink-0 rounded-xl bg-emerald-600 px-5 py-3 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
+            className="text-sm font-bold text-emerald-600 hover:text-emerald-700"
           >
-            Join Our Community
+            Join Pinnacle →
           </Link>
-
         </div>
+
+        {testimonials.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-8 text-center">
+            <div className="text-4xl">🏆</div>
+
+            <h3 className="mt-3 font-black text-slate-900">
+              Your success story could be next!
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              Keep practicing, stay consistent and work towards becoming our
+              next JAMB or WAEC success story.
+            </p>
+
+            <Link
+              href="/practice"
+              className="mt-5 inline-flex rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700"
+            >
+              Start Practicing →
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {testimonials.map((item) => (
+              <article
+                key={item.id}
+                className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-lg"
+              >
+                <div className="absolute right-0 top-0 h-20 w-20 rounded-bl-full bg-emerald-50" />
+
+                <div className="relative">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-xl font-black text-emerald-700">
+                      {item.student_name.charAt(0).toUpperCase()}
+                    </div>
+
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700">
+                      {item.exam_type}
+                    </span>
+                  </div>
+
+                  <div className="mt-5">
+                    <h3 className="font-black text-slate-900">
+                      {item.student_name}
+                    </h3>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-sm font-black text-amber-700">
+                        {item.score}
+                      </span>
+
+                      <span className="text-xs font-semibold text-slate-400">
+                        {item.year}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <span className="text-3xl leading-none text-emerald-200">
+                      “
+                    </span>
+
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      {item.message}
+                    </p>
+                  </div>
+
+                  <div className="mt-5 flex items-center gap-1 text-amber-400">
+                    {'★★★★★'}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* MORE FEATURES */}
