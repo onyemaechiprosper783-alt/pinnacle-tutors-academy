@@ -13,8 +13,14 @@ export default function RegisterPage() {
   const supabase = createClient();
 
   const [form, setForm] = useState({
-    full_name: '', email: '', phone: '', password: '', exam_target: 'jamb',
+    full_name: '',
+    email: '',
+    phone: '',
+    password: '',
+    exam_target: 'jamb',
+    access_key: '',
   });
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -24,20 +30,21 @@ export default function RegisterPage() {
     setServerError('');
 
     const parsed = registerSchema.safeParse(form);
+
     if (!parsed.success) {
       const fieldErrors: Record<string, string> = {};
+
       parsed.error.issues.forEach((issue) => {
         fieldErrors[issue.path[0] as string] = issue.message;
       });
+
       setErrors(fieldErrors);
       return;
     }
+
     setErrors({});
     setLoading(true);
 
-    // Note: role is never sent here. The `handle_new_user` trigger on
-    // auth.users always creates the profile as role='student' — there is
-    // no client input path that can set a role at signup.
     const { error } = await supabase.auth.signUp({
       email: parsed.data.email,
       password: parsed.data.password,
@@ -67,8 +74,13 @@ export default function RegisterPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-      <h1 className="mb-1 text-2xl font-bold text-slate-900">Create your account</h1>
-      <p className="mb-6 text-slate-500">Start prepping for JAMB & WAEC today.</p>
+      <h1 className="mb-1 text-2xl font-bold text-slate-900">
+        Create your account
+      </h1>
+
+      <p className="mb-6 text-slate-500">
+        Start prepping for JAMB & WAEC today.
+      </p>
 
       {serverError && (
         <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -78,27 +90,47 @@ export default function RegisterPage() {
 
       <form onSubmit={handleSubmit} noValidate>
         <FormField
-          label="Full name" name="full_name" value={form.full_name}
-          onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+          label="Full name"
+          name="full_name"
+          value={form.full_name}
+          onChange={(e) =>
+            setForm({ ...form, full_name: e.target.value })
+          }
           error={errors.full_name}
         />
+
         <FormField
-          label="Email" name="email" type="email" value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          label="Email"
+          name="email"
+          type="email"
+          value={form.email}
+          onChange={(e) =>
+            setForm({ ...form, email: e.target.value })
+          }
           error={errors.email}
         />
+
         <FormField
-          label="Phone number" name="phone" type="tel" value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          label="Phone number"
+          name="phone"
+          type="tel"
+          value={form.phone}
+          onChange={(e) =>
+            setForm({ ...form, phone: e.target.value })
+          }
           error={errors.phone}
         />
+
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
             What are you preparing for?
           </label>
+
           <select
             value={form.exam_target}
-            onChange={(e) => setForm({ ...form, exam_target: e.target.value })}
+            onChange={(e) =>
+              setForm({ ...form, exam_target: e.target.value })
+            }
             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="jamb">JAMB / UTME</option>
@@ -106,11 +138,31 @@ export default function RegisterPage() {
             <option value="both">Both</option>
           </select>
         </div>
+
         <FormField
-          label="Password" name="password" type="password" value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          label="Password"
+          name="password"
+          type="password"
+          value={form.password}
+          onChange={(e) =>
+            setForm({ ...form, password: e.target.value })
+          }
           error={errors.password}
         />
+
+        <FormField
+          label="Product Key / Activation Key"
+          name="access_key"
+          value={form.access_key}
+          onChange={(e) =>
+            setForm({ ...form, access_key: e.target.value })
+          }
+          error={errors.access_key}
+        />
+
+        <p className="mb-4 -mt-2 text-xs text-slate-500">
+          Enter the access key provided to you by Pinnacle Tutors Academy.
+        </p>
 
         <Button type="submit" fullWidth loading={loading} className="mt-2">
           Create account
@@ -119,10 +171,13 @@ export default function RegisterPage() {
 
       <p className="mt-6 text-center text-sm text-slate-500">
         Already have an account?{' '}
-        <Link href="/login" className="font-semibold text-emerald-700">
+        <Link
+          href="/login"
+          className="font-semibold text-emerald-700"
+        >
           Log in
         </Link>
       </p>
     </div>
   );
-}
+    }
