@@ -25,7 +25,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setServerError('');
 
@@ -71,28 +71,30 @@ export default function RegisterPage() {
     }
 
     /*
-     * The access key is claimed only after Supabase creates the
-     * authenticated user. The database function uses auth.uid()
-     * internally, so a student cannot claim a key for somebody else.
+     * If email confirmation is enabled, Supabase may create the account
+     * without creating a browser session. The access key cannot be claimed
+     * yet because claim_access_key() requires auth.uid().
      */
     if (!data.session) {
       setLoading(false);
 
       setServerError(
-        'Your account was created, but you must confirm your email before your access key can be activated.'
+        'Your account was created. Please confirm your email, then log in to activate your access key.'
       );
 
       return;
     }
 
-    const { error: claimError } = await supabase.rpc('claim_access_key', {
-      p_key_code: parsed.data.access_key.trim(),
-    });
-
-    setLoading(false);
+    const { error: claimError } = await supabase.rpc(
+      'claim_access_key',
+      {
+        p_key_code: parsed.data.access_key.trim(),
+      }
+    );
 
     if (claimError) {
       await supabase.auth.signOut();
+      setLoading(false);
 
       setServerError(
         claimError.message ||
@@ -102,6 +104,7 @@ export default function RegisterPage() {
       return;
     }
 
+    setLoading(false);
     router.push('/dashboard');
   }
 
@@ -214,4 +217,4 @@ export default function RegisterPage() {
       </p>
     </div>
   );
-          }
+}
