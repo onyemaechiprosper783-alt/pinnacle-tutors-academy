@@ -15,6 +15,7 @@ const NAV = [
   { href: '/admin/millionaire', label: 'Millionaire' },
   { href: '/admin/results', label: 'Results' },
   { href: '/admin/leaderboard', label: 'Leaderboard' },
+  { href: '/admin/testimonials', label: 'Testimonials' },
   { href: '/admin/community', label: 'Community' },
   { href: '/admin/announcements', label: 'Announcements' },
   { href: '/admin/contact', label: 'Contact Messages' },
@@ -26,6 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // check just prevents a flash of admin UI if middleware is ever bypassed
   // in a future refactor — defense in depth, not the primary guard.
   const profile = await getCurrentProfile();
+
   if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
     redirect('/dashboard?error=unauthorized');
   }
@@ -33,7 +35,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen bg-slate-100 md:flex">
       <aside className="w-full shrink-0 border-b border-slate-200 bg-slate-900 p-4 md:h-screen md:w-60 md:overflow-y-auto md:border-b-0 md:border-r">
-        <div className="mb-6 text-lg font-bold text-white">Pinnacle Admin</div>
+        <div className="mb-6 text-lg font-bold text-white">
+          Pinnacle Admin
+        </div>
+
         <nav className="grid grid-cols-2 gap-1 md:grid-cols-1">
           {NAV.map((item) => (
             <Link
@@ -45,14 +50,23 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </Link>
           ))}
         </nav>
+
         <div className="mt-6 border-t border-slate-700 pt-4">
-          <p className="text-sm font-medium text-white">{profile.full_name}</p>
-          <p className="text-xs uppercase tracking-wide text-emerald-400">{profile.role}</p>
+          <p className="text-sm font-medium text-white">
+            {profile.full_name}
+          </p>
+
+          <p className="text-xs uppercase tracking-wide text-emerald-400">
+            {profile.role}
+          </p>
+
           <LogoutButton className="mt-2 text-sm text-slate-400 hover:text-red-400" />
         </div>
       </aside>
 
-      <main className="flex-1 p-4 md:p-8">{children}</main>
+      <main className="flex-1 p-4 md:p-8">
+        {children}
+      </main>
     </div>
   );
 }
