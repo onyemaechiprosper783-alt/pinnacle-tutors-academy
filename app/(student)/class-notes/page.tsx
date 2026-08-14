@@ -39,6 +39,13 @@ export default async function ClassNotesPage() {
     notes = (data ?? []) as ClassNote[];
   }
 
+  // Activation Key request should appear exactly 2 weeks
+  // before October 1, 2026.
+  const activationStart = new Date('2026-09-17T00:00:00+01:00');
+  const now = new Date();
+
+  const showActivationRequest = now >= activationStart;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-10">
 
@@ -68,17 +75,27 @@ export default async function ClassNotesPage() {
           </h2>
 
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            Your Product Key access is no longer active. Request an
-            Activation Key to continue accessing Class Notes and other
-            learning features.
+            Your Product Key access is no longer active.
+            {showActivationRequest
+              ? ' Request an Activation Key to continue accessing Class Notes.'
+              : ' Product Key access is currently required to access Class Notes.'}
           </p>
 
-          <Link
-            href="/register"
-            className="mt-5 inline-flex rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white transition hover:bg-emerald-700"
-          >
-            Request Activation Key
-          </Link>
+          {showActivationRequest ? (
+            <Link
+              href="/register"
+              className="mt-5 inline-flex rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white transition hover:bg-emerald-700"
+            >
+              Request Activation Key
+            </Link>
+          ) : (
+            <Link
+              href="/register"
+              className="mt-5 inline-flex rounded-xl bg-emerald-600 px-5 py-3 text-sm font-black text-white transition hover:bg-emerald-700"
+            >
+              Request Product Key
+            </Link>
+          )}
         </section>
       ) : notes.length === 0 ? (
         /* EMPTY STATE */
