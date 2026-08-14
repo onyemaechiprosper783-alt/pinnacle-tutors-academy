@@ -25,11 +25,19 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  // TEMPORARY TEST DATE
-  // This simulates September 17, 2026.
-  // It lets us verify that both request buttons appear.
+  // REAL DATE
+  // The website now uses the actual current date.
+  //
+  // August 14, 2026 → September 16, 2026:
+  // Product Key request is available.
+  //
+  // September 17, 2026 → September 30, 2026:
+  // Both Product Key and Activation Key requests are available.
+  //
+  // October 1, 2026 onward:
+  // Only Activation Key request is available.
 
-  const now = new Date('2026-09-17T12:00:00+01:00');
+  const now = new Date();
 
   const activationRequestStart = new Date(
     '2026-09-17T00:00:00+01:00'
