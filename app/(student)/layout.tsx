@@ -5,19 +5,20 @@ import { LogoutButton } from '@/components/layout/LogoutButton';
 
 const NAV_GROUPS = [
   {
-    title: 'Main',
+    title: 'Home & Learning',
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
       { href: '/practice', label: 'Practice', icon: '📚' },
       { href: '/mock', label: 'Mock Exam', icon: '📝' },
       { href: '/cbt', label: 'CBT', icon: '💻' },
-      { href: '/challenge', label: 'Challenge', icon: '🔥' },
+      { href: '/challenge', label: 'UTME Challenge', icon: '🔥' },
+      { href: '/millionaire', label: 'Millionaire', icon: '💰' },
     ],
   },
   {
-    title: 'Compete & Connect',
+    title: 'Progress & Community',
     items: [
-      { href: '/millionaire', label: 'Millionaire', icon: '💰' },
+      { href: '/results', label: 'My Results', icon: '📊' },
       { href: '/leaderboard', label: 'Leaderboard', icon: '🏆' },
       { href: '/community', label: 'Community', icon: '👥' },
     ],
@@ -25,9 +26,10 @@ const NAV_GROUPS = [
   {
     title: 'Account',
     items: [
-      { href: '/results', label: 'My Results', icon: '📊' },
       { href: '/profile', label: 'Profile', icon: '👤' },
       { href: '/settings', label: 'Settings', icon: '⚙️' },
+      { href: '/product-key', label: 'Product Key', icon: '🔑' },
+      { href: '/activation-key', label: 'Activation Key', icon: '🔐' },
     ],
   },
 ];
@@ -53,10 +55,14 @@ export default async function StudentLayout({
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 md:flex md:pb-0">
-      {/* Desktop Sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
+      {/* DESKTOP SIDEBAR */}
+      <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
+        {/* Logo */}
         <div className="border-b border-slate-100 px-5 py-5">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-3"
+          >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-lg font-black text-white shadow-sm">
               P
             </div>
@@ -65,6 +71,7 @@ export default async function StudentLayout({
               <p className="text-base font-black text-slate-900">
                 Pinnacle Tutors
               </p>
+
               <p className="text-xs font-medium text-emerald-600">
                 Learn • Practice • Succeed
               </p>
@@ -72,6 +79,7 @@ export default async function StudentLayout({
           </Link>
         </div>
 
+        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-5">
           {NAV_GROUPS.map((group) => (
             <div key={group.title} className="mb-6">
@@ -86,7 +94,7 @@ export default async function StudentLayout({
                     href={item.href}
                     className="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-700"
                   >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50 text-base transition group-hover:bg-white">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-base transition group-hover:bg-white">
                       {item.icon}
                     </span>
 
@@ -96,12 +104,30 @@ export default async function StudentLayout({
               </div>
             </div>
           ))}
+
+          {/* WhatsApp Community */}
+          <div className="mt-2 rounded-2xl bg-emerald-50 p-4">
+            <p className="text-sm font-black text-emerald-900">
+              Join the Pinnacle Family 🚀
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-emerald-700">
+              Get announcements, motivation and study updates.
+            </p>
+
+            <Link
+              href="/community"
+              className="mt-3 flex w-full items-center justify-center rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white transition hover:bg-emerald-700"
+            >
+              Join Community →
+            </Link>
+          </div>
         </nav>
 
         {/* User section */}
         <div className="border-t border-slate-100 p-4">
           <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 p-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700">
               {firstName.charAt(0).toUpperCase()}
             </div>
 
@@ -109,7 +135,10 @@ export default async function StudentLayout({
               <p className="truncate text-sm font-bold text-slate-800">
                 {profile.full_name}
               </p>
-              <p className="text-xs text-slate-400">Student</p>
+
+              <p className="text-xs text-slate-400">
+                Student
+              </p>
             </div>
           </div>
 
@@ -118,9 +147,12 @@ export default async function StudentLayout({
       </aside>
 
       <div className="min-w-0 flex-1">
-        {/* Mobile Header */}
+        {/* MOBILE HEADER */}
         <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2.5"
+          >
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-sm font-black text-white">
               P
             </div>
@@ -129,23 +161,27 @@ export default async function StudentLayout({
               <p className="text-sm font-black text-slate-900">
                 Pinnacle Tutors
               </p>
+
               <p className="text-[10px] font-medium text-emerald-600">
                 Academy
               </p>
             </div>
           </Link>
 
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">
+          <Link
+            href="/profile"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700"
+          >
             {firstName.charAt(0).toUpperCase()}
-          </div>
+          </Link>
         </header>
 
-        {/* Page content */}
+        {/* PAGE CONTENT */}
         <main className="min-h-[calc(100vh-64px)] p-4 sm:p-6 md:p-8">
           {children}
         </main>
 
-        {/* Mobile Bottom Navigation */}
+        {/* MOBILE BOTTOM NAVIGATION */}
         <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 px-1 pb-safe backdrop-blur md:hidden">
           <div className="mx-auto flex max-w-lg justify-around">
             {MOBILE_NAV.map((item) => (
@@ -154,7 +190,10 @@ export default async function StudentLayout({
                 href={item.href}
                 className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-slate-500 transition hover:text-emerald-600"
               >
-                <span className="text-lg">{item.icon}</span>
+                <span className="text-lg">
+                  {item.icon}
+                </span>
+
                 <span className="truncate text-[10px] font-semibold">
                   {item.label}
                 </span>
@@ -165,4 +204,4 @@ export default async function StudentLayout({
       </div>
     </div>
   );
-  }
+}
