@@ -25,6 +25,52 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
 
+  // August 14, 2026 → September 16, 2026:
+  // Product Key request is available.
+  //
+  // September 17, 2026 → September 30, 2026:
+  // Both Product Key and Activation Key requests are available.
+  //
+  // October 1, 2026 onward:
+  // Only Activation Key request is available.
+
+  const now = new Date();
+
+  const activationRequestStart = new Date(
+    '2026-09-17T00:00:00+01:00'
+  );
+
+  const octoberFirst = new Date(
+    '2026-10-01T00:00:00+01:00'
+  );
+
+  const showProductKeyRequest = now < octoberFirst;
+  const showActivationKeyRequest = now >= activationRequestStart;
+
+  const whatsappNumber = '2347051101464';
+
+  function requestProductKey() {
+    const message = encodeURIComponent(
+      'Hello Pinnacle Tutors Academy, I would like to request a Product Key for my student account.'
+    );
+
+    window.open(
+      `https://wa.me/${whatsappNumber}?text=${message}`,
+      '_blank'
+    );
+  }
+
+  function requestActivationKey() {
+    const message = encodeURIComponent(
+      'Hello Pinnacle Tutors Academy, I would like to request an Activation Key for my student account.'
+    );
+
+    window.open(
+      `https://wa.me/${whatsappNumber}?text=${message}`,
+      '_blank'
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setServerError('');
@@ -54,8 +100,8 @@ export default function RegisterPage() {
           phone: parsed.data.phone ?? null,
           exam_target: parsed.data.exam_target ?? null,
 
-          // Keep the activation/product key temporarily
-          // until the user confirms their email and logs in.
+          // Keep the access key temporarily until the
+          // user confirms their email and logs in.
           pending_access_key: parsed.data.access_key.trim(),
         },
 
@@ -79,8 +125,7 @@ export default function RegisterPage() {
      * When email confirmation is enabled, Supabase normally
      * creates the account without creating a browser session.
      *
-     * The activation/product key has already been saved in
-     * user metadata as pending_access_key.
+     * The access key is temporarily saved in user metadata.
      *
      * The login page will claim it after the user confirms
      * their email and logs in.
@@ -230,18 +275,47 @@ export default function RegisterPage() {
           error={errors.password}
         />
 
-        <FormField
-          label="Product Key / Activation Key"
-          name="access_key"
-          value={form.access_key}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              access_key: e.target.value,
-            })
-          }
-          error={errors.access_key}
-        />
+        <div className="mb-4">
+          <FormField
+            label="Product Key / Activation Key"
+            name="access_key"
+            value={form.access_key}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                access_key: e.target.value,
+              })
+            }
+            error={errors.access_key}
+          />
+
+          <div className="mt-3 space-y-2">
+            {showProductKeyRequest && (
+              <button
+                type="button"
+                onClick={requestProductKey}
+                className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"
+              >
+                🔑 Request Product Key
+              </button>
+            )}
+
+            {showActivationKeyRequest && (
+              <button
+                type="button"
+                onClick={requestActivationKey}
+                className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-700 transition hover:bg-amber-100"
+              >
+                🔐 Request Activation Key
+              </button>
+            )}
+          </div>
+
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            Enter the Product Key or Activation Key you received from
+            Pinnacle Tutors Academy.
+          </p>
+        </div>
 
         <Button
           type="submit"
