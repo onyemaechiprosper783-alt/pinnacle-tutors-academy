@@ -75,7 +75,6 @@ export default async function StudentLayout({
       ========================== */}
       <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
 
-        {/* Logo */}
         <div className="border-b border-slate-100 px-5 py-5">
           <Link
             href="/dashboard"
@@ -97,7 +96,6 @@ export default async function StudentLayout({
           </Link>
         </div>
 
-        {/* Desktop Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-5">
 
           {NAV_GROUPS.map((group) => (
@@ -120,16 +118,13 @@ export default async function StudentLayout({
                       {item.icon}
                     </span>
 
-                    <span>
-                      {item.label}
-                    </span>
+                    <span>{item.label}</span>
                   </Link>
                 ))}
               </div>
             </div>
           ))}
 
-          {/* WhatsApp / Community CTA */}
           <div className="mt-2 rounded-2xl bg-emerald-50 p-4">
             <p className="text-sm font-black text-emerald-900">
               Join the Pinnacle Family 🚀
@@ -148,7 +143,6 @@ export default async function StudentLayout({
           </div>
         </nav>
 
-        {/* Desktop User Section */}
         <div className="border-t border-slate-100 p-4">
 
           <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 p-3">
@@ -202,15 +196,16 @@ export default async function StudentLayout({
             </div>
           </Link>
 
-          {/* REAL MOBILE MENU */}
+          {/* Mobile menu */}
           <MobileStudentMenu
             firstName={firstName}
             fullName={profile.full_name || 'Student'}
-            navGroups={NAV_GROUPS}
           />
         </header>
 
-        {/* Page Content */}
+        {/* =========================
+            PAGE CONTENT
+        ========================== */}
         <main className="min-h-[calc(100vh-64px)] p-4 sm:p-6 md:p-8">
           {children}
         </main>
@@ -238,11 +233,8 @@ export default async function StudentLayout({
               </Link>
             ))}
 
-            {/* Menu button is handled by the header */}
             <div className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-slate-400">
-              <span className="text-lg">
-                ☰
-              </span>
+              <span className="text-lg">☰</span>
 
               <span className="truncate text-[10px] font-semibold">
                 Menu
