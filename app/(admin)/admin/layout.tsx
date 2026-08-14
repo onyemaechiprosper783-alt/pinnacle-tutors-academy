@@ -6,6 +6,7 @@ import { LogoutButton } from '@/components/layout/LogoutButton';
 const NAV = [
   { href: '/admin/dashboard', label: 'Dashboard' },
   { href: '/admin/students', label: 'Students' },
+  { href: '/admin/class-notes', label: 'Class Notes' },
   { href: '/admin/questions', label: 'Questions' },
   { href: '/admin/questions/bulk-import', label: 'Bulk Import' },
   { href: '/admin/subjects', label: 'Subjects' },
@@ -22,13 +23,20 @@ const NAV = [
   { href: '/admin/settings', label: 'Settings' },
 ];
 
-export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   // Middleware already blocks non-admins from reaching here; this second
   // check just prevents a flash of admin UI if middleware is ever bypassed
   // in a future refactor — defense in depth, not the primary guard.
   const profile = await getCurrentProfile();
 
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+  if (
+    !profile ||
+    (profile.role !== 'admin' && profile.role !== 'super_admin')
+  ) {
     redirect('/dashboard?error=unauthorized');
   }
 
