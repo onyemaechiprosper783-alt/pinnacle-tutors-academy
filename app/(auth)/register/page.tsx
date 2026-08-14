@@ -45,6 +45,8 @@ export default function RegisterPage() {
     setErrors({});
     setLoading(true);
 
+    const accessKey = parsed.data.access_key.trim();
+
     const { data, error } = await supabase.auth.signUp({
       email: parsed.data.email,
       password: parsed.data.password,
@@ -53,6 +55,7 @@ export default function RegisterPage() {
           full_name: parsed.data.full_name,
           phone: parsed.data.phone ?? null,
           exam_target: parsed.data.exam_target ?? null,
+          pending_access_key: accessKey,
         },
         emailRedirectTo: `${window.location.origin}/dashboard`,
       },
@@ -70,11 +73,6 @@ export default function RegisterPage() {
       return;
     }
 
-    /*
-     * If email confirmation is enabled, Supabase may create the account
-     * without creating a browser session. The access key cannot be claimed
-     * yet because claim_access_key() requires auth.uid().
-     */
     if (!data.session) {
       setLoading(false);
 
@@ -88,7 +86,7 @@ export default function RegisterPage() {
     const { error: claimError } = await supabase.rpc(
       'claim_access_key',
       {
-        p_key_code: parsed.data.access_key.trim(),
+        p_key_code: accessKey,
       }
     );
 
@@ -103,6 +101,12 @@ export default function RegisterPage() {
 
       return;
     }
+
+    await supabase.auth.updateUser({
+      data: {
+        pending_access_key: null,
+      },
+    });
 
     setLoading(false);
     router.push('/dashboard');
