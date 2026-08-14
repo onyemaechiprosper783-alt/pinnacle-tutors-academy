@@ -15,19 +15,31 @@ export async function getStudentAccess(): Promise<StudentAccess | null> {
 
   if (!user) return null;
 
-  const { data, error } = await supabase
+  // Activation access always takes priority.
+  const { data: activationAccess } = await supabase
     .from('student_access')
     .select('access_type, granted_at, expires_at')
     .eq('profile_id', user.id)
+    .eq('access_type', 'activation_key')
     .order('granted_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error || !data) {
-    return null;
+  if (activationAccess) {
+    return activationAccess;
   }
 
-  return data;
+  // If there is no Activation Key, check Product Key access.
+  const { data: productAccess } = await supabase
+    .from('student_access')
+    .select('access_type, granted_at, expires_at')
+    .eq('profile_id', user.id)
+    .eq('access_type', 'product_key')
+    .order('granted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return productAccess ?? null;
 }
 
 export async function hasActiveStudentAccess(): Promise<boolean> {
