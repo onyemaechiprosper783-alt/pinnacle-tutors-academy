@@ -45,8 +45,6 @@ export default function RegisterPage() {
     setErrors({});
     setLoading(true);
 
-    const accessKey = parsed.data.access_key.trim();
-
     const { data, error } = await supabase.auth.signUp({
       email: parsed.data.email,
       password: parsed.data.password,
@@ -55,8 +53,12 @@ export default function RegisterPage() {
           full_name: parsed.data.full_name,
           phone: parsed.data.phone ?? null,
           exam_target: parsed.data.exam_target ?? null,
-          pending_access_key: accessKey,
+
+          // Keep the activation/product key temporarily
+          // until the user confirms their email and logs in.
+          pending_access_key: parsed.data.access_key.trim(),
         },
+
         emailRedirectTo: `${window.location.origin}/dashboard`,
       },
     });
@@ -73,20 +75,31 @@ export default function RegisterPage() {
       return;
     }
 
+    /*
+     * When email confirmation is enabled, Supabase normally
+     * creates the account without creating a browser session.
+     *
+     * The activation/product key has already been saved in
+     * user metadata as pending_access_key.
+     *
+     * The login page will claim it after the user confirms
+     * their email and logs in.
+     */
     if (!data.session) {
       setLoading(false);
 
-      setServerError(
-        'Your account was created. Please confirm your email, then log in to activate your access key.'
-      );
-
+      router.push('/login?registered=1');
       return;
     }
 
+    /*
+     * If email confirmation is disabled and Supabase gives
+     * us a session immediately, claim the key now.
+     */
     const { error: claimError } = await supabase.rpc(
       'claim_access_key',
       {
-        p_key_code: accessKey,
+        p_key_code: parsed.data.access_key.trim(),
       }
     );
 
@@ -102,14 +115,26 @@ export default function RegisterPage() {
       return;
     }
 
-    await supabase.auth.updateUser({
+    /*
+     * The key was successfully claimed, so remove the
+     * temporary key from user metadata.
+     */
+    const { error: metadataError } = await supabase.auth.updateUser({
       data: {
         pending_access_key: null,
       },
     });
 
+    if (metadataError) {
+      console.error(
+        'Access key was claimed, but pending metadata could not be cleared:',
+        metadataError
+      );
+    }
+
     setLoading(false);
     router.push('/dashboard');
+    router.refresh();
   }
 
   return (
@@ -134,7 +159,10 @@ export default function RegisterPage() {
           name="full_name"
           value={form.full_name}
           onChange={(e) =>
-            setForm({ ...form, full_name: e.target.value })
+            setForm({
+              ...form,
+              full_name: e.target.value,
+            })
           }
           error={errors.full_name}
         />
@@ -145,7 +173,10 @@ export default function RegisterPage() {
           type="email"
           value={form.email}
           onChange={(e) =>
-            setForm({ ...form, email: e.target.value })
+            setForm({
+              ...form,
+              email: e.target.value,
+            })
           }
           error={errors.email}
         />
@@ -156,7 +187,10 @@ export default function RegisterPage() {
           type="tel"
           value={form.phone}
           onChange={(e) =>
-            setForm({ ...form, phone: e.target.value })
+            setForm({
+              ...form,
+              phone: e.target.value,
+            })
           }
           error={errors.phone}
         />
@@ -169,7 +203,10 @@ export default function RegisterPage() {
           <select
             value={form.exam_target}
             onChange={(e) =>
-              setForm({ ...form, exam_target: e.target.value })
+              setForm({
+                ...form,
+                exam_target: e.target.value,
+              })
             }
             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
           >
@@ -185,7 +222,10 @@ export default function RegisterPage() {
           type="password"
           value={form.password}
           onChange={(e) =>
-            setForm({ ...form, password: e.target.value })
+            setForm({
+              ...form,
+              password: e.target.value,
+            })
           }
           error={errors.password}
         />
@@ -195,7 +235,10 @@ export default function RegisterPage() {
           name="access_key"
           value={form.access_key}
           onChange={(e) =>
-            setForm({ ...form, access_key: e.target.value })
+            setForm({
+              ...form,
+              access_key: e.target.value,
+            })
           }
           error={errors.access_key}
         />
