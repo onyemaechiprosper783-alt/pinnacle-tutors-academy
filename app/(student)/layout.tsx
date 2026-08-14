@@ -70,9 +70,7 @@ export default async function StudentLayout({
   return (
     <div className="min-h-screen bg-slate-50 pb-20 md:flex md:pb-0">
 
-      {/* =========================
-          DESKTOP SIDEBAR
-      ========================== */}
+      {/* DESKTOP SIDEBAR */}
       <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
 
         <div className="border-b border-slate-100 px-5 py-5">
@@ -167,14 +165,10 @@ export default async function StudentLayout({
         </div>
       </aside>
 
-      {/* =========================
-          MAIN CONTENT
-      ========================== */}
+      {/* MAIN CONTENT */}
       <div className="min-w-0 flex-1">
 
-        {/* =========================
-            MOBILE HEADER
-        ========================== */}
+        {/* MOBILE HEADER */}
         <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden">
 
           <Link
@@ -196,23 +190,19 @@ export default async function StudentLayout({
             </div>
           </Link>
 
-          {/* Mobile menu */}
+          {/* MOBILE MENU */}
           <MobileStudentMenu
             firstName={firstName}
             fullName={profile.full_name || 'Student'}
           />
         </header>
 
-        {/* =========================
-            PAGE CONTENT
-        ========================== */}
+        {/* PAGE CONTENT */}
         <main className="min-h-[calc(100vh-64px)] p-4 sm:p-6 md:p-8">
           {children}
         </main>
 
-        {/* =========================
-            MOBILE BOTTOM NAV
-        ========================== */}
+        {/* MOBILE BOTTOM NAVIGATION */}
         <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 px-1 pb-safe backdrop-blur md:hidden">
 
           <div className="mx-auto flex max-w-lg justify-around">
