@@ -61,6 +61,12 @@ const MORE_FEATURES = [
     description: 'Explore your subjects',
   },
   {
+    href: '/class-notes',
+    icon: '📚',
+    title: 'Class Notes',
+    description: 'Access your Pinnacle study notes',
+  },
+  {
     href: '/profile',
     icon: '👤',
     title: 'Profile',
