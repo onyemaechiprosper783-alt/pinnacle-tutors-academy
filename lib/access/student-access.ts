@@ -15,12 +15,15 @@ export async function getStudentAccess(): Promise<StudentAccess | null> {
 
   if (!user) return null;
 
-  // Activation access always takes priority.
+  const now = new Date().toISOString();
+
+  // First look for an active, non-expired Activation Key.
   const { data: activationAccess } = await supabase
     .from('student_access')
     .select('access_type, granted_at, expires_at')
     .eq('profile_id', user.id)
     .eq('access_type', 'activation_key')
+    .or(`expires_at.is.null,expires_at.gt.${now}`)
     .order('granted_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -29,12 +32,14 @@ export async function getStudentAccess(): Promise<StudentAccess | null> {
     return activationAccess;
   }
 
-  // If there is no Activation Key, check Product Key access.
+  // If there is no active Activation Key,
+  // look for an active Product Key.
   const { data: productAccess } = await supabase
     .from('student_access')
     .select('access_type, granted_at, expires_at')
     .eq('profile_id', user.id)
     .eq('access_type', 'product_key')
+    .gt('expires_at', now)
     .order('granted_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -47,12 +52,12 @@ export async function hasActiveStudentAccess(): Promise<boolean> {
 
   if (!access) return false;
 
-  // Activation Keys do not expire.
+  // Activation Key with no expiry = permanent access.
   if (access.access_type === 'activation_key') {
-    return true;
+    return !access.expires_at || new Date(access.expires_at).getTime() > Date.now();
   }
 
-  // Product Keys expire.
+  // Product Key must have a future expiry date.
   if (access.access_type === 'product_key') {
     if (!access.expires_at) return false;
 
