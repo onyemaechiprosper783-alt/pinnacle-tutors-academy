@@ -25,16 +25,11 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  // August 14, 2026 → September 16, 2026:
-  // Product Key request is available.
-  //
-  // September 17, 2026 → September 30, 2026:
-  // Both Product Key and Activation Key requests are available.
-  //
-  // October 1, 2026 onward:
-  // Only Activation Key request is available.
+  // TEMPORARY TEST DATE
+  // This simulates September 17, 2026.
+  // It lets us verify that both request buttons appear.
 
-  const now = new Date();
+  const now = new Date('2026-09-17T12:00:00+01:00');
 
   const activationRequestStart = new Date(
     '2026-09-17T00:00:00+01:00'
@@ -99,9 +94,6 @@ export default function RegisterPage() {
           full_name: parsed.data.full_name,
           phone: parsed.data.phone ?? null,
           exam_target: parsed.data.exam_target ?? null,
-
-          // Keep the access key temporarily until the
-          // user confirms their email and logs in.
           pending_access_key: parsed.data.access_key.trim(),
         },
 
@@ -121,15 +113,6 @@ export default function RegisterPage() {
       return;
     }
 
-    /*
-     * When email confirmation is enabled, Supabase normally
-     * creates the account without creating a browser session.
-     *
-     * The access key is temporarily saved in user metadata.
-     *
-     * The login page will claim it after the user confirms
-     * their email and logs in.
-     */
     if (!data.session) {
       setLoading(false);
 
@@ -137,10 +120,6 @@ export default function RegisterPage() {
       return;
     }
 
-    /*
-     * If email confirmation is disabled and Supabase gives
-     * us a session immediately, claim the key now.
-     */
     const { error: claimError } = await supabase.rpc(
       'claim_access_key',
       {
@@ -160,10 +139,6 @@ export default function RegisterPage() {
       return;
     }
 
-    /*
-     * The key was successfully claimed, so remove the
-     * temporary key from user metadata.
-     */
     const { error: metadataError } = await supabase.auth.updateUser({
       data: {
         pending_access_key: null,
