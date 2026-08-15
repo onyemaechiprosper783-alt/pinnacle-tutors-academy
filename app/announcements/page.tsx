@@ -38,18 +38,21 @@ export default async function AnnouncementsPage() {
 
   const admin = createAdminClient();
 
-  const { data: announcementsData, error: announcementsError } = await admin
-    .from('announcements')
-    .select('id, title, body, created_at, is_active')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false });
+  // Get active announcements
+  const { data: announcementsData, error: announcementsError } =
+    await admin
+      .from('announcements')
+      .select('id, title, body, created_at, is_active')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
 
   if (announcementsError) {
-    console.error('Announcements error:', announcementsError);
+    console.error('Announcements page error:', announcementsError);
   }
 
   const announcements = (announcementsData ?? []) as Announcement[];
 
+  // Get announcements already read by this student
   const { data: readsData, error: readsError } = await admin
     .from('announcement_reads')
     .select('announcement_id')
@@ -62,6 +65,26 @@ export default async function AnnouncementsPage() {
   const readIds = new Set(
     (readsData ?? []).map((item) => item.announcement_id)
   );
+
+  // Mark every currently active unread announcement as read
+  const unreadAnnouncements = announcements.filter(
+    (announcement) => !readIds.has(announcement.id)
+  );
+
+  if (unreadAnnouncements.length > 0) {
+    const rowsToInsert = unreadAnnouncements.map((announcement) => ({
+      user_id: profile.id,
+      announcement_id: announcement.id,
+    }));
+
+    const { error: markReadError } = await admin
+      .from('announcement_reads')
+      .insert(rowsToInsert);
+
+    if (markReadError) {
+      console.error('Could not mark announcements as read:', markReadError);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-10">
@@ -77,8 +100,10 @@ export default async function AnnouncementsPage() {
 
         {/* HEADER */}
         <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+
           <div className="bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 p-6 text-white md:p-8">
             <div className="flex items-center gap-4">
+
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-3xl">
                 🔔
               </div>
@@ -96,6 +121,7 @@ export default async function AnnouncementsPage() {
                   Stay updated with important information from Pinnacle.
                 </p>
               </div>
+
             </div>
           </div>
 
@@ -104,6 +130,7 @@ export default async function AnnouncementsPage() {
 
             {announcements.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+
                 <div className="text-5xl">🔔</div>
 
                 <h2 className="mt-4 text-xl font-black text-slate-900">
@@ -114,26 +141,30 @@ export default async function AnnouncementsPage() {
                   There are currently no active announcements. Check back
                   later for updates.
                 </p>
+
               </div>
             ) : (
               <div className="space-y-4">
+
                 {announcements.map((announcement) => {
-                  const isRead = readIds.has(announcement.id);
+                  const wasReadBeforeOpening =
+                    readIds.has(announcement.id);
 
                   return (
                     <article
                       key={announcement.id}
                       className={`rounded-2xl border p-5 transition ${
-                        isRead
+                        wasReadBeforeOpening
                           ? 'border-slate-200 bg-white'
                           : 'border-emerald-200 bg-emerald-50/40 shadow-sm'
                       }`}
                     >
+
                       <div className="flex items-start gap-4">
 
                         <div
                           className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl ${
-                            isRead
+                            wasReadBeforeOpening
                               ? 'bg-slate-100'
                               : 'bg-emerald-100'
                           }`}
@@ -144,15 +175,17 @@ export default async function AnnouncementsPage() {
                         <div className="min-w-0 flex-1">
 
                           <div className="flex flex-wrap items-center gap-2">
+
                             <h2 className="text-lg font-black text-slate-900">
                               {announcement.title}
                             </h2>
 
-                            {!isRead && (
+                            {!wasReadBeforeOpening && (
                               <span className="rounded-full bg-red-500 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">
                                 New
                               </span>
                             )}
+
                           </div>
 
                           <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
@@ -166,10 +199,13 @@ export default async function AnnouncementsPage() {
                           </p>
 
                         </div>
+
                       </div>
+
                     </article>
                   );
                 })}
+
               </div>
             )}
 
