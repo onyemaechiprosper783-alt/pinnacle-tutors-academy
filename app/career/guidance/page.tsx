@@ -2,48 +2,56 @@ import Link from 'next/link';
 
 const careers = [
   {
+    slug: 'medicine-healthcare',
     title: 'Medicine & Healthcare',
     icon: '🩺',
     description:
       'Explore careers such as medicine, nursing, pharmacy, medical laboratory science and other health-related fields.',
   },
   {
+    slug: 'engineering-technology',
     title: 'Engineering & Technology',
     icon: '💻',
     description:
       'Explore engineering, software development, computer science, cybersecurity and other technology careers.',
   },
   {
+    slug: 'business-finance',
     title: 'Business & Finance',
     icon: '💼',
     description:
       'Explore accounting, banking, economics, business administration, finance and entrepreneurship.',
   },
   {
+    slug: 'law-government',
     title: 'Law & Government',
     icon: '⚖️',
     description:
       'Explore law, political science, public administration, international relations and related careers.',
   },
   {
+    slug: 'education',
     title: 'Education',
     icon: '📚',
     description:
       'Explore teaching, educational administration, guidance and counselling and other education careers.',
   },
   {
+    slug: 'science-research',
     title: 'Science & Research',
     icon: '🔬',
     description:
       'Explore biology, chemistry, physics, mathematics and careers involving scientific research.',
   },
   {
+    slug: 'media-communication',
     title: 'Media & Communication',
     icon: '🎤',
     description:
       'Explore journalism, mass communication, broadcasting, public relations and digital media.',
   },
   {
+    slug: 'creative-arts-design',
     title: 'Creative Arts & Design',
     icon: '🎨',
     description:
@@ -89,24 +97,24 @@ export default function CareerGuidancePage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Choosing a career is an important decision. Explore different
-                areas and learn about possible paths before choosing your
-                course and institution.
+                Choose a career area to learn more about possible careers,
+                courses and academic paths.
               </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               {careers.map((career) => (
-                <div
-                  key={career.title}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-emerald-200 hover:bg-emerald-50/30"
+                <Link
+                  key={career.slug}
+                  href={`/career/guidance/${career.slug}`}
+                  className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50/40 hover:shadow-sm"
                 >
                   <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-2xl">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-2xl transition group-hover:bg-emerald-100">
                       {career.icon}
                     </div>
 
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-black text-slate-900">
                         {career.title}
                       </h3>
@@ -114,9 +122,13 @@ export default function CareerGuidancePage() {
                       <p className="mt-2 text-sm leading-6 text-slate-500">
                         {career.description}
                       </p>
+
+                      <span className="mt-3 inline-block text-sm font-bold text-emerald-600">
+                        Explore careers →
+                      </span>
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
 
