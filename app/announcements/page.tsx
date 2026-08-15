@@ -7,7 +7,7 @@ type Announcement = {
   title: string;
   body: string;
   created_at: string;
-  active: boolean;
+  is_active: boolean;
 };
 
 export default async function AnnouncementsPage() {
@@ -38,18 +38,26 @@ export default async function AnnouncementsPage() {
 
   const admin = createAdminClient();
 
-  const { data: announcementsData } = await admin
+  const { data: announcementsData, error: announcementsError } = await admin
     .from('announcements')
-    .select('id, title, body, created_at, active')
-    .eq('active', true)
+    .select('id, title, body, created_at, is_active')
+    .eq('is_active', true)
     .order('created_at', { ascending: false });
+
+  if (announcementsError) {
+    console.error('Announcements error:', announcementsError);
+  }
 
   const announcements = (announcementsData ?? []) as Announcement[];
 
-  const { data: readsData } = await admin
+  const { data: readsData, error: readsError } = await admin
     .from('announcement_reads')
     .select('announcement_id')
     .eq('user_id', profile.id);
+
+  if (readsError) {
+    console.error('Announcement reads error:', readsError);
+  }
 
   const readIds = new Set(
     (readsData ?? []).map((item) => item.announcement_id)
