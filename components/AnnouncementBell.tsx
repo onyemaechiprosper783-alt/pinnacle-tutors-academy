@@ -11,56 +11,84 @@ type Announcement = {
   created_at: string;
 };
 
-const READ_KEY = 'pinnacle_read_announcements';
-
 export default function AnnouncementBell() {
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const updateUnreadCount = (items: Announcement[]) => {
-    try {
-      const stored = localStorage.getItem(READ_KEY);
-      const readIds: string[] = stored ? JSON.parse(stored) : [];
-
-      const unread = items.filter(
-        (announcement) => !readIds.includes(announcement.id)
-      );
-
-      setUnreadCount(unread.length);
-    } catch {
-      setUnreadCount(items.length);
-    }
-  };
-
-  const loadAnnouncements = async () => {
+  const loadUnreadCount = async () => {
     const supabase = createClient();
 
-    const { data, error } = await supabase
-      .from('announcements')
-      .select('id, title, body, created_at')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
+    // Get the currently logged-in student
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (error) {
-      console.error('Announcement error:', error);
+    if (!user) {
+      setUnreadCount(0);
       return;
     }
 
-    const items = (data || []) as Announcement[];
+    // Get all active announcements
+    const { data: announcements, error: announcementError } =
+      await supabase
+        .from('announcements')
+        .select('id, title, body, created_at')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
 
-    setAnnouncements(items);
-    updateUnreadCount(items);
+    if (announcementError) {
+      console.error('Announcement error:', announcementError);
+      setUnreadCount(0);
+      return;
+    }
+
+    const items = (announcements || []) as Announcement[];
+
+    if (items.length === 0) {
+      setUnreadCount(0);
+      return;
+    }
+
+    // Get announcements this student has already read
+    const { data: reads, error: readsError } = await supabase
+      .from('announcement_reads')
+      .select('announcement_id')
+      .eq('user_id', user.id);
+
+    if (readsError) {
+      console.error('Announcement reads error:', readsError);
+      return;
+    }
+
+    const readIds = new Set(
+      (reads || []).map((read) => read.announcement_id)
+    );
+
+    const unreadCount = items.filter(
+      (announcement) => !readIds.has(announcement.id)
+    ).length;
+
+    setUnreadCount(unreadCount);
   };
 
   useEffect(() => {
-    loadAnnouncements();
+    loadUnreadCount();
 
-    // Check for new announcements every 30 seconds.
+    // Check for new announcements every 30 seconds
     const interval = setInterval(() => {
-      loadAnnouncements();
+      loadUnreadCount();
     }, 30000);
 
-    return () => clearInterval(interval);
+    // Refresh when the student returns to the dashboard
+    const handleFocus = () => {
+      loadUnreadCount();
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const hasUnread = unreadCount > 0;
