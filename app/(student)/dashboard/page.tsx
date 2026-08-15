@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import AnnouncementBell from '@/components/AnnouncementBell';
 import { getCurrentProfile } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -111,6 +112,11 @@ export default async function StudentDashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-6">
+
+      {/* ANNOUNCEMENTS */}
+      <div className="flex justify-end">
+        <AnnouncementBell />
+      </div>
 
       {/* HERO */}
       <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 px-6 py-8 text-white shadow-xl sm:px-8 sm:py-10">
