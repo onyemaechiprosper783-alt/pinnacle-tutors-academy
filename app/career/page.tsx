@@ -36,10 +36,6 @@ async function getUniversities(): Promise<University[]> {
 
       const html = await response.text();
 
-      /*
-       * The NUC pages contain university names inside HTML table rows.
-       * We extract the first useful table cell from each numbered row.
-       */
       const rowMatches = html.match(
         /<tr[^>]*>[\s\S]*?<\/tr>/gi
       );
@@ -88,9 +84,6 @@ async function getUniversities(): Promise<University[]> {
     }
   }
 
-  /*
-   * Remove duplicates while keeping the university category.
-   */
   const unique = new Map<string, University>();
 
   for (const university of universities) {
@@ -156,7 +149,11 @@ export default async function CareerPage() {
           {/* QUICK OPTIONS */}
           <div className="grid gap-4 p-5 md:grid-cols-3 md:p-6">
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            {/* CAREER GUIDANCE */}
+            <Link
+              href="/career/guidance"
+              className="rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:border-emerald-300 hover:bg-emerald-50/50"
+            >
               <div className="text-3xl">🎯</div>
 
               <h2 className="mt-3 text-lg font-black text-slate-900">
@@ -166,9 +163,17 @@ export default async function CareerPage() {
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 Explore careers and discover possible academic paths.
               </p>
-            </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <span className="mt-4 inline-block text-sm font-bold text-emerald-600">
+                Explore Careers →
+              </span>
+            </Link>
+
+            {/* COURSES */}
+            <Link
+              href="/career/courses"
+              className="rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:border-emerald-300 hover:bg-emerald-50/50"
+            >
               <div className="text-3xl">📚</div>
 
               <h2 className="mt-3 text-lg font-black text-slate-900">
@@ -178,8 +183,13 @@ export default async function CareerPage() {
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 Learn about courses and the careers they can lead to.
               </p>
-            </div>
 
+              <span className="mt-4 inline-block text-sm font-bold text-emerald-600">
+                Explore Courses →
+              </span>
+            </Link>
+
+            {/* UNIVERSITIES */}
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
               <div className="text-3xl">🏫</div>
 
@@ -233,6 +243,7 @@ export default async function CareerPage() {
               <p className="text-2xl font-black text-slate-900">
                 {universities.length}
               </p>
+
               <p className="mt-1 text-xs font-semibold text-slate-500">
                 Universities loaded
               </p>
@@ -242,6 +253,7 @@ export default async function CareerPage() {
               <p className="text-2xl font-black text-blue-700">
                 {federalCount}
               </p>
+
               <p className="mt-1 text-xs font-semibold text-blue-600">
                 Federal
               </p>
@@ -251,6 +263,7 @@ export default async function CareerPage() {
               <p className="text-2xl font-black text-emerald-700">
                 {stateCount}
               </p>
+
               <p className="mt-1 text-xs font-semibold text-emerald-600">
                 State
               </p>
@@ -260,6 +273,7 @@ export default async function CareerPage() {
               <p className="text-2xl font-black text-purple-700">
                 {privateCount}
               </p>
+
               <p className="mt-1 text-xs font-semibold text-purple-600">
                 Private
               </p>
