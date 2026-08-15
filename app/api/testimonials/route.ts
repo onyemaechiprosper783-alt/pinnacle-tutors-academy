@@ -12,24 +12,46 @@ const testimonialSchema = z.object({
   is_published: z.boolean().default(true),
 });
 
+async function requireAdmin() {
+  const profile = await getCurrentProfile();
+
+  if (
+    !profile ||
+    (profile.role !== 'admin' && profile.role !== 'super_admin')
+  ) {
+    return null;
+  }
+
+  return profile;
+}
+
+/* =========================
+   GET TESTIMONIALS
+========================= */
+
 export async function GET() {
   try {
+    const caller = await requireAdmin();
+
+    if (!caller) {
+      return NextResponse.json(
+        { error: 'Not authorized.' },
+        { status: 403 }
+      );
+    }
+
     const admin = createAdminClient();
 
     const { data, error } = await admin
-      .schema('public')
       .from('testimonials')
-      .select('*')
+      .select(
+        'id, student_name, exam_type, score, year, message, is_published, created_at'
+      )
       .order('year', { ascending: false })
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('TESTIMONIAL GET ERROR:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
+      console.error('TESTIMONIAL GET ERROR:', error);
 
       return NextResponse.json(
         {
@@ -57,14 +79,15 @@ export async function GET() {
   }
 }
 
+/* =========================
+   CREATE TESTIMONIAL
+========================= */
+
 export async function POST(request: Request) {
   try {
-    const caller = await getCurrentProfile();
+    const caller = await requireAdmin();
 
-    if (
-      !caller ||
-      (caller.role !== 'admin' && caller.role !== 'super_admin')
-    ) {
+    if (!caller) {
       return NextResponse.json(
         { error: 'Not authorized.' },
         { status: 403 }
@@ -72,6 +95,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => null);
+
     const parsed = testimonialSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -82,7 +106,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          error: 'Invalid testimonial information.',
+          error: 'Please check the testimonial information and try again.',
         },
         { status: 400 }
       );
@@ -90,29 +114,23 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
 
-    const testimonialData = {
-      student_name: parsed.data.student_name,
-      exam_type: parsed.data.exam_type,
-      score: parsed.data.score,
-      year: parsed.data.year,
-      message: parsed.data.message,
-      is_published: parsed.data.is_published,
-    };
-
     const { data, error } = await admin
-      .schema('public')
       .from('testimonials')
-      .insert(testimonialData)
-      .select('*')
+      .insert({
+        student_name: parsed.data.student_name,
+        exam_type: parsed.data.exam_type,
+        score: parsed.data.score,
+        year: parsed.data.year,
+        message: parsed.data.message,
+        is_published: parsed.data.is_published,
+      })
+      .select(
+        'id, student_name, exam_type, score, year, message, is_published, created_at'
+      )
       .single();
 
     if (error) {
-      console.error('TESTIMONIAL INSERT ERROR:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
+      console.error('TESTIMONIAL INSERT ERROR:', error);
 
       return NextResponse.json(
         {
@@ -127,6 +145,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
+        success: true,
         testimonial: data,
       },
       { status: 201 }
