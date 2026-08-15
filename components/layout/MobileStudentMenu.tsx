@@ -11,10 +11,6 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { LogoutButton } from '@/components/layout/LogoutButton';
 
-/* ------------------------------------------------------------------ */
-/* SHARED OPEN/CLOSE STATE                                             */
-/* ------------------------------------------------------------------ */
-
 type MobileMenuContextValue = {
   open: boolean;
   setOpen: (value: boolean) => void;
@@ -44,10 +40,6 @@ function useMobileMenuContext() {
   return ctx;
 }
 
-/* ------------------------------------------------------------------ */
-/* TOP-RIGHT MENU TRIGGER                                              */
-/* ------------------------------------------------------------------ */
-
 export function MobileMenuTrigger() {
   const { setOpen } = useMobileMenuContext();
 
@@ -62,10 +54,6 @@ export function MobileMenuTrigger() {
     </button>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* BOTTOM NAV MENU BUTTON                                              */
-/* ------------------------------------------------------------------ */
 
 export function MobileMenuBottomButton() {
   const { open, setOpen } = useMobileMenuContext();
@@ -84,10 +72,6 @@ export function MobileMenuBottomButton() {
     </button>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* NAV CONFIG                                                          */
-/* ------------------------------------------------------------------ */
 
 const MENU_GROUPS = [
   {
@@ -129,19 +113,12 @@ const MENU_GROUPS = [
   },
 ];
 
-/* ------------------------------------------------------------------ */
-/* ACCESS TYPES                                                        */
-/* ------------------------------------------------------------------ */
-
 type StudentKey = {
   access_type: 'product_key' | 'activation_key';
   key_code: string;
+  granted_at: string;
   expires_at: string | null;
 };
-
-/* ------------------------------------------------------------------ */
-/* THE DRAWER                                                         */
-/* ------------------------------------------------------------------ */
 
 export function MobileStudentMenu({
   firstName,
@@ -157,7 +134,8 @@ export function MobileStudentMenu({
   const [activationKeyOpen, setActivationKeyOpen] = useState(false);
 
   const [productKey, setProductKey] = useState<StudentKey | null>(null);
-  const [activationKey, setActivationKey] = useState<StudentKey | null>(null);
+  const [activationKey, setActivationKey] =
+    useState<StudentKey | null>(null);
 
   const [loadingKeys, setLoadingKeys] = useState(false);
   const [keyError, setKeyError] = useState('');
@@ -165,10 +143,6 @@ export function MobileStudentMenu({
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  /* -------------------------------------------------------------- */
-  /* LOAD THE CURRENT STUDENT'S KEYS                                */
-  /* -------------------------------------------------------------- */
 
   useEffect(() => {
     if (!open) return;
@@ -189,16 +163,53 @@ export function MobileStudentMenu({
 
         if (!response.ok) {
           if (!cancelled) {
-            setKeyError(result.error || 'Could not load your access keys.');
+            setKeyError(
+              result.error || 'Could not load your access keys.'
+            );
           }
           return;
         }
 
         if (cancelled) return;
 
-        setProductKey(result.product_key ?? null);
-        setActivationKey(result.activation_key ?? null);
-      } catch {
+        /*
+         * The API returns:
+         *
+         * {
+         *   success: true,
+         *   keys: [...]
+         * }
+         *
+         * The old menu was incorrectly looking for
+         * result.product_key and result.activation_key.
+         *
+         * We now read the keys array correctly.
+         */
+        const keys: StudentKey[] = Array.isArray(result.keys)
+          ? result.keys
+          : [];
+
+        const now = Date.now();
+
+        const activeProductKey =
+          keys.find(
+            (key) =>
+              key.access_type === 'product_key' &&
+              key.expires_at &&
+              new Date(key.expires_at).getTime() > now
+          ) ?? null;
+
+        const activeActivationKey =
+          keys.find(
+            (key) =>
+              key.access_type === 'activation_key'
+          ) ?? null;
+
+        setProductKey(activeProductKey);
+        setActivationKey(activeActivationKey);
+      } catch (error) {
+        console.error('Could not load student access keys:', error);
+
         if (!cancelled) {
           setKeyError('Could not load your access keys.');
         }
@@ -215,10 +226,6 @@ export function MobileStudentMenu({
       cancelled = true;
     };
   }, [open]);
-
-  /* -------------------------------------------------------------- */
-  /* LOCK BACKGROUND SCROLL                                          */
-  /* -------------------------------------------------------------- */
 
   useEffect(() => {
     if (!open) return;
@@ -261,7 +268,6 @@ export function MobileStudentMenu({
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] md:hidden">
-      {/* BACKDROP */}
       <button
         type="button"
         aria-label="Close menu"
@@ -269,7 +275,6 @@ export function MobileStudentMenu({
         className="absolute inset-0 h-full w-full bg-slate-950/50"
       />
 
-      {/* DRAWER */}
       <aside className="absolute inset-y-0 left-0 flex h-full w-[92%] max-w-sm flex-col bg-slate-50 shadow-xl">
         {/* HEADER */}
         <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-4 shadow-sm">
@@ -346,9 +351,10 @@ export function MobileStudentMenu({
                   </Link>
                 ))}
 
-                {/* PRODUCT KEY */}
+                {/* ACCESS KEYS */}
                 {group.title === 'Account' && (
                   <>
+                    {/* PRODUCT KEY */}
                     <button
                       type="button"
                       onClick={toggleProductKey}
@@ -374,6 +380,10 @@ export function MobileStudentMenu({
                         {loadingKeys ? (
                           <p className="text-sm font-semibold text-slate-500">
                             Checking Product Key...
+                          </p>
+                        ) : keyError ? (
+                          <p className="text-sm font-semibold text-red-600">
+                            {keyError}
                           </p>
                         ) : productKey ? (
                           <>
@@ -427,6 +437,10 @@ export function MobileStudentMenu({
                           <p className="text-sm font-semibold text-slate-500">
                             Checking Activation Key...
                           </p>
+                        ) : keyError ? (
+                          <p className="text-sm font-semibold text-red-600">
+                            {keyError}
+                          </p>
                         ) : activationKey ? (
                           <>
                             <p className="text-xs font-black uppercase tracking-wider text-purple-700">
@@ -459,12 +473,6 @@ export function MobileStudentMenu({
                             </a>
                           </>
                         )}
-                      </div>
-                    )}
-
-                    {keyError && (
-                      <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-semibold text-red-600">
-                        {keyError}
                       </div>
                     )}
                   </>
