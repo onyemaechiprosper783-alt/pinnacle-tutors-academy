@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 
 type Course = {
+  slug: string;
   name: string;
   icon: string;
   field: string;
@@ -13,6 +14,7 @@ type Course = {
 
 const courses: Course[] = [
   {
+    slug: 'computer-science',
     name: 'Computer Science',
     icon: '💻',
     field: 'Technology & Software',
@@ -21,6 +23,7 @@ const courses: Course[] = [
     careers: 'Software Developer, Programmer, Data Analyst, IT Specialist',
   },
   {
+    slug: 'medicine-surgery',
     name: 'Medicine & Surgery',
     icon: '🩺',
     field: 'Healthcare',
@@ -29,6 +32,7 @@ const courses: Course[] = [
     careers: 'Doctor, Medical Researcher, Healthcare Specialist',
   },
   {
+    slug: 'nursing',
     name: 'Nursing',
     icon: '👩‍⚕️',
     field: 'Healthcare',
@@ -37,6 +41,7 @@ const courses: Course[] = [
     careers: 'Registered Nurse, Community Health Specialist, Nurse Educator',
   },
   {
+    slug: 'law',
     name: 'Law',
     icon: '⚖️',
     field: 'Law & Government',
@@ -45,6 +50,7 @@ const courses: Course[] = [
     careers: 'Lawyer, Legal Adviser, Corporate Counsel',
   },
   {
+    slug: 'accounting',
     name: 'Accounting',
     icon: '💰',
     field: 'Business & Finance',
@@ -53,6 +59,7 @@ const courses: Course[] = [
     careers: 'Accountant, Auditor, Financial Analyst',
   },
   {
+    slug: 'business-administration',
     name: 'Business Administration',
     icon: '💼',
     field: 'Business & Finance',
@@ -61,6 +68,7 @@ const courses: Course[] = [
     careers: 'Business Manager, Entrepreneur, Administrator',
   },
   {
+    slug: 'civil-engineering',
     name: 'Civil Engineering',
     icon: '🏗️',
     field: 'Engineering & Technology',
@@ -69,6 +77,7 @@ const courses: Course[] = [
     careers: 'Civil Engineer, Structural Engineer, Project Manager',
   },
   {
+    slug: 'electrical-electronics-engineering',
     name: 'Electrical/Electronics Engineering',
     icon: '⚡',
     field: 'Engineering & Technology',
@@ -77,6 +86,7 @@ const courses: Course[] = [
     careers: 'Electrical Engineer, Electronics Engineer, Systems Engineer',
   },
   {
+    slug: 'biochemistry',
     name: 'Biochemistry',
     icon: '🧪',
     field: 'Science & Research',
@@ -85,6 +95,7 @@ const courses: Course[] = [
     careers: 'Biochemist, Laboratory Scientist, Researcher',
   },
   {
+    slug: 'microbiology',
     name: 'Microbiology',
     icon: '🔬',
     field: 'Science & Research',
@@ -93,6 +104,7 @@ const courses: Course[] = [
     careers: 'Microbiologist, Laboratory Scientist, Researcher',
   },
   {
+    slug: 'mass-communication',
     name: 'Mass Communication',
     icon: '🎤',
     field: 'Media & Communication',
@@ -101,6 +113,7 @@ const courses: Course[] = [
     careers: 'Journalist, Broadcaster, Public Relations Specialist',
   },
   {
+    slug: 'architecture',
     name: 'Architecture',
     icon: '🏛️',
     field: 'Creative Arts & Design',
@@ -109,6 +122,7 @@ const courses: Course[] = [
     careers: 'Architect, Designer, Urban Planner',
   },
   {
+    slug: 'education',
     name: 'Education',
     icon: '📚',
     field: 'Education',
@@ -117,6 +131,7 @@ const courses: Course[] = [
     careers: 'Teacher, Education Administrator, Education Consultant',
   },
   {
+    slug: 'economics',
     name: 'Economics',
     icon: '📈',
     field: 'Business & Finance',
@@ -125,6 +140,7 @@ const courses: Course[] = [
     careers: 'Economist, Financial Analyst, Economic Researcher',
   },
   {
+    slug: 'political-science',
     name: 'Political Science',
     icon: '🏛️',
     field: 'Law & Government',
@@ -133,6 +149,7 @@ const courses: Course[] = [
     careers: 'Political Analyst, Public Administrator, Policy Adviser',
   },
   {
+    slug: 'psychology',
     name: 'Psychology',
     icon: '🧠',
     field: 'Social & Behavioural Sciences',
@@ -194,8 +211,8 @@ export default function CoursesPage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Search through popular courses and learn about the career
-                opportunities connected to them.
+                Search through courses and tap any course to learn more about
+                it.
               </p>
             </div>
 
@@ -237,16 +254,17 @@ export default function CoursesPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {filteredCourses.map((course) => (
-                  <article
-                    key={course.name}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-emerald-200 hover:bg-emerald-50/30"
+                  <Link
+                    key={course.slug}
+                    href={`/career/courses/${course.slug}`}
+                    className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50/40 hover:shadow-sm"
                   >
                     <div className="flex items-start gap-4">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-2xl">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-2xl transition group-hover:bg-emerald-100">
                         {course.icon}
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <h3 className="font-black text-slate-900">
                           {course.name}
                         </h3>
@@ -268,9 +286,13 @@ export default function CoursesPage() {
                             {course.careers}
                           </p>
                         </div>
+
+                        <p className="mt-4 text-sm font-black text-emerald-600">
+                          View course details →
+                        </p>
                       </div>
                     </div>
-                  </article>
+                  </Link>
                 ))}
               </div>
             )}
