@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { LogoutButton } from '@/components/layout/LogoutButton';
+import { useTheme } from '@/components/ThemeProvider';
 
 type MobileMenuContextValue = {
   open: boolean;
@@ -128,6 +129,7 @@ export function MobileStudentMenu({
   fullName: string;
 }) {
   const { open, setOpen } = useMobileMenuContext();
+  const { theme, setTheme } = useTheme();
 
   const [mounted, setMounted] = useState(false);
   const [productKeyOpen, setProductKeyOpen] = useState(false);
@@ -172,19 +174,6 @@ export function MobileStudentMenu({
 
         if (cancelled) return;
 
-        /*
-         * The API returns:
-         *
-         * {
-         *   success: true,
-         *   keys: [...]
-         * }
-         *
-         * The old menu was incorrectly looking for
-         * result.product_key and result.activation_key.
-         *
-         * We now read the keys array correctly.
-         */
         const keys: StudentKey[] = Array.isArray(result.keys)
           ? result.keys
           : [];
@@ -201,8 +190,7 @@ export function MobileStudentMenu({
 
         const activeActivationKey =
           keys.find(
-            (key) =>
-              key.access_type === 'activation_key'
+            (key) => key.access_type === 'activation_key'
           ) ?? null;
 
         setProductKey(activeProductKey);
@@ -480,6 +468,72 @@ export function MobileStudentMenu({
               </div>
             </section>
           ))}
+
+          {/* APPEARANCE */}
+          <section className="mb-7">
+            <h2 className="mb-3 px-1 text-xs font-black uppercase tracking-widest text-slate-400">
+              Appearance
+            </h2>
+
+            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-xl">
+                  🎨
+                </span>
+
+                <div>
+                  <p className="text-base font-black text-slate-800">
+                    Theme
+                  </p>
+
+                  <p className="text-xs font-medium text-slate-400">
+                    Choose how Pinnacle Tutors looks
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTheme('light')}
+                  className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
+                    theme === 'light'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                  }`}
+                >
+                  <span className="block text-lg">☀️</span>
+                  <span className="mt-1 block">Light</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTheme('dark')}
+                  className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
+                    theme === 'dark'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                  }`}
+                >
+                  <span className="block text-lg">🌙</span>
+                  <span className="mt-1 block">Dark</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTheme('system')}
+                  className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
+                    theme === 'system'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                  }`}
+                >
+                  <span className="block text-lg">⚙️</span>
+                  <span className="mt-1 block">System</span>
+                </button>
+              </div>
+            </div>
+          </section>
 
           {/* COMMUNITY CTA */}
           <div className="mb-6 rounded-2xl bg-emerald-50 p-5">
