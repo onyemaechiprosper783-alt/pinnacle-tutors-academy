@@ -11,35 +11,66 @@ const startSchema = z.object({
   duration_seconds: z.number().min(60).max(4 * 60 * 60).optional(),
   difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   exam_type: z.enum(['jamb', 'waec', 'utme', 'general']).optional(),
-  round_id: z.string().uuid().optional(), // links a utme_challenge attempt to a challenge_rounds row
+  year: z.number().int().min(1900).max(2100).optional(),
+  round_id: z.string().uuid().optional(),
 });
 
-// Sensible default durations when the client doesn't specify one.
 const DEFAULT_DURATION: Record<string, number> = {
   cbt: 45 * 60,
   mock: 90 * 60,
-  practice: 0, // untimed unless configured
+  practice: 0,
   utme_challenge: 15 * 60,
 };
 
 export async function POST(request: Request) {
   const caller = await getCurrentProfile();
-  if (!caller) return NextResponse.json({ error: 'Not authorized.' }, { status: 401 });
+
+  if (!caller) {
+    return NextResponse.json(
+      { error: 'Not authorized.' },
+      { status: 401 }
+    );
+  }
 
   const body = await request.json().catch(() => null);
-  const parsed = startSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid exam configuration.' }, { status: 400 });
 
-  const { mode, subject_ids, question_count, difficulty, exam_type, round_id } = parsed.data;
-  const duration_seconds = parsed.data.duration_seconds ?? DEFAULT_DURATION[mode];
+  const parsed = startSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Invalid exam configuration.' },
+      { status: 400 }
+    );
+  }
+
+  const {
+    mode,
+    subject_ids,
+    question_count,
+    difficulty,
+    exam_type,
+    year,
+    round_id,
+  } = parsed.data;
+
+  const duration_seconds =
+    parsed.data.duration_seconds ?? DEFAULT_DURATION[mode];
 
   const questionIds = await selectQuestions({
-    subjectIds: subject_ids, mode, questionCount: question_count, difficulty, examType: exam_type,
+    subjectIds: subject_ids,
+    mode,
+    questionCount: question_count,
+    difficulty,
+    examType: exam_type,
+    year,
   });
 
   if (questionIds.length === 0) {
     return NextResponse.json(
-      { error: 'Questions for this subject are currently being prepared. Please check back soon.' },
+      {
+        error:
+          'No questions match your selected options. Try another year, difficulty, or exam type.',
+      },
       { status: 404 }
     );
   }
@@ -52,7 +83,13 @@ export async function POST(request: Request) {
       student_id: caller.id,
       mode,
       subject_ids,
-      config: { question_count, difficulty, exam_type, round_id },
+      config: {
+        question_count,
+        difficulty,
+        exam_type,
+        year,
+        round_id,
+      },
       duration_seconds: duration_seconds || null,
       status: 'in_progress',
     })
@@ -60,24 +97,49 @@ export async function POST(request: Request) {
     .single();
 
   if (attemptError || !attempt) {
-    return NextResponse.json({ error: 'Could not start exam.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Could not start exam.' },
+      { status: 500 }
+    );
   }
 
   const attemptQuestionRows = questionIds.map((qId, i) => ({
-    attempt_id: attempt.id, question_id: qId, position: i + 1,
+    attempt_id: attempt.id,
+    question_id: qId,
+    position: i + 1,
   }));
-  await admin.from('attempt_questions').insert(attemptQuestionRows);
 
-  const { data: questions } = await admin
+  const { error: attemptQuestionsError } = await admin
+    .from('attempt_questions')
+    .insert(attemptQuestionRows);
+
+  if (attemptQuestionsError) {
+    return NextResponse.json(
+      { error: 'Could not create exam questions.' },
+      { status: 500 }
+    );
+  }
+
+  const { data: questions, error: questionsError } = await admin
     .from('questions_public')
     .select('*')
     .in('id', questionIds);
 
-  // Preserve the randomized order chosen above, since the IN query above
-  // does not guarantee row order.
-  const orderMap = new Map(questionIds.map((id, i) => [id, i]));
+  if (questionsError) {
+    return NextResponse.json(
+      { error: 'Could not load exam questions.' },
+      { status: 500 }
+    );
+  }
+
+  const orderMap = new Map(
+    questionIds.map((id, i) => [id, i])
+  );
+
   const orderedQuestions = (questions ?? []).sort(
-    (a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0)
+    (a, b) =>
+      (orderMap.get(a.id) ?? 0) -
+      (orderMap.get(b.id) ?? 0)
   );
 
   return NextResponse.json({
