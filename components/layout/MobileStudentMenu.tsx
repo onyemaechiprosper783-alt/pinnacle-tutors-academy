@@ -49,7 +49,7 @@ export function MobileMenuTrigger() {
       type="button"
       onClick={() => setOpen(true)}
       aria-label="Open student menu"
-      className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-200 bg-white text-xl text-orange-700 shadow-sm active:scale-95"
+      className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--card)] text-xl text-[var(--foreground)] shadow-sm active:scale-95"
     >
       ☰
     </button>
@@ -65,7 +65,7 @@ export function MobileMenuBottomButton() {
       onClick={() => setOpen(true)}
       aria-label="Open student menu"
       className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 transition ${
-        open ? 'text-orange-600' : 'text-slate-500'
+        open ? 'text-orange-600' : 'text-[var(--muted)]'
       }`}
     >
       <span className="text-lg">☰</span>
@@ -263,17 +263,20 @@ export function MobileStudentMenu({
         className="absolute inset-0 h-full w-full bg-slate-950/50"
       />
 
-      <aside className="absolute inset-y-0 left-0 flex h-full w-[92%] max-w-sm flex-col bg-slate-50 shadow-xl">
-
+      <aside className="absolute inset-y-0 left-0 flex h-full w-[92%] max-w-sm flex-col bg-[var(--background)] shadow-xl">
         {/* HEADER */}
-        <header className="flex shrink-0 items-center justify-between border-b border-orange-100 bg-white px-5 py-4 shadow-sm">
+        <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-5 py-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-600 text-lg font-black text-white shadow-sm">
-              P
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              <img
+                src="/pinnacle-logo.png"
+                alt="Pinnacle Tutors Academy"
+                className="h-full w-full object-contain"
+              />
             </div>
 
             <div>
-              <p className="text-lg font-black text-slate-900">
+              <p className="text-lg font-black text-[var(--foreground)]">
                 Pinnacle Tutors
               </p>
 
@@ -287,25 +290,25 @@ export function MobileStudentMenu({
             type="button"
             onClick={closeMenu}
             aria-label="Close menu"
-            className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-2xl font-medium text-orange-700 active:scale-95"
+            className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--background)] text-2xl font-medium text-[var(--foreground)] active:scale-95"
           >
             ×
           </button>
         </header>
 
         {/* STUDENT PROFILE */}
-        <div className="shrink-0 border-b border-orange-100 bg-white px-5 py-4">
-          <div className="flex items-center gap-3 rounded-2xl bg-orange-50 p-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-100 text-lg font-black text-orange-700">
+        <div className="shrink-0 border-b border-[var(--border)] bg-[var(--card)] px-5 py-4">
+          <div className="flex items-center gap-3 rounded-2xl bg-[var(--background)] p-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-100 text-lg font-black text-orange-700 dark:bg-orange-950/50 dark:text-orange-300">
               {firstName.charAt(0).toUpperCase()}
             </div>
 
             <div className="min-w-0">
-              <p className="truncate text-base font-black text-slate-900">
+              <p className="truncate text-base font-black text-[var(--foreground)]">
                 {fullName}
               </p>
 
-              <p className="mt-0.5 text-xs font-medium text-slate-400">
+              <p className="mt-0.5 text-xs font-medium text-[var(--muted)]">
                 Student
               </p>
             </div>
@@ -316,7 +319,7 @@ export function MobileStudentMenu({
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {MENU_GROUPS.map((group) => (
             <section key={group.title} className="mb-7">
-              <h2 className="mb-3 px-1 text-xs font-black uppercase tracking-widest text-slate-400">
+              <h2 className="mb-3 px-1 text-xs font-black uppercase tracking-widest text-[var(--muted)]">
                 {group.title}
               </h2>
 
@@ -326,15 +329,15 @@ export function MobileStudentMenu({
                     key={item.href}
                     href={item.href}
                     onClick={closeMenu}
-                    className="flex min-h-[56px] items-center gap-4 rounded-2xl border border-orange-100 bg-white px-4 py-3.5 text-base font-bold text-slate-700 shadow-sm transition active:scale-[0.99] active:bg-orange-50"
+                    className="flex min-h-[56px] items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3.5 text-base font-bold text-[var(--foreground)] shadow-sm transition active:scale-[0.99] active:bg-orange-50 dark:active:bg-orange-950/30"
                   >
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-xl">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--background)] text-xl">
                       {item.icon}
                     </span>
 
                     <span className="flex-1">{item.label}</span>
 
-                    <span className="text-lg text-slate-300">
+                    <span className="text-lg text-[var(--muted)]">
                       →
                     </span>
                   </Link>
@@ -347,16 +350,16 @@ export function MobileStudentMenu({
                     <button
                       type="button"
                       onClick={toggleProductKey}
-                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-orange-100 bg-white px-4 py-3.5 text-left text-base font-bold text-slate-700 shadow-sm active:bg-orange-50"
+                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3.5 text-left text-base font-bold text-[var(--foreground)] shadow-sm active:bg-orange-50 dark:active:bg-orange-950/30"
                     >
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-xl">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-xl dark:bg-orange-950/40">
                         🔑
                       </span>
 
                       <span className="flex-1">Product Key</span>
 
                       <span
-                        className={`text-lg text-slate-300 transition ${
+                        className={`text-lg text-[var(--muted)] transition ${
                           productKeyOpen ? 'rotate-90' : ''
                         }`}
                       >
@@ -365,9 +368,9 @@ export function MobileStudentMenu({
                     </button>
 
                     {productKeyOpen && (
-                      <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                      <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-900 dark:bg-orange-950/30">
                         {loadingKeys ? (
-                          <p className="text-sm font-semibold text-slate-500">
+                          <p className="text-sm font-semibold text-[var(--muted)]">
                             Checking Product Key...
                           </p>
                         ) : keyError ? (
@@ -376,23 +379,23 @@ export function MobileStudentMenu({
                           </p>
                         ) : productKey ? (
                           <>
-                            <p className="text-xs font-black uppercase tracking-wider text-orange-700">
+                            <p className="text-xs font-black uppercase tracking-wider text-orange-700 dark:text-orange-300">
                               Your Product Key
                             </p>
 
-                            <div className="mt-2 rounded-xl border border-orange-200 bg-white p-3">
-                              <p className="break-all font-mono text-sm font-black tracking-wide text-slate-900">
+                            <div className="mt-2 rounded-xl border border-orange-200 bg-white p-3 dark:border-orange-900 dark:bg-slate-900">
+                              <p className="break-all font-mono text-sm font-black tracking-wide text-slate-900 dark:text-white">
                                 {productKey.key_code}
                               </p>
                             </div>
 
-                            <p className="mt-2 text-xs font-semibold text-orange-700">
+                            <p className="mt-2 text-xs font-semibold text-orange-700 dark:text-orange-300">
                               Valid until:{' '}
                               {formatExpiry(productKey.expires_at)}
                             </p>
                           </>
                         ) : (
-                          <p className="text-sm font-semibold text-slate-600">
+                          <p className="text-sm font-semibold text-[var(--muted)]">
                             No Product Key assigned.
                           </p>
                         )}
@@ -403,16 +406,16 @@ export function MobileStudentMenu({
                     <button
                       type="button"
                       onClick={toggleActivationKey}
-                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-red-100 bg-white px-4 py-3.5 text-left text-base font-bold text-slate-700 shadow-sm active:bg-red-50"
+                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3.5 text-left text-base font-bold text-[var(--foreground)] shadow-sm active:bg-red-50 dark:active:bg-red-950/30"
                     >
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-xl">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-xl dark:bg-red-950/40">
                         🔐
                       </span>
 
                       <span className="flex-1">Activation Key</span>
 
                       <span
-                        className={`text-lg text-slate-300 transition ${
+                        className={`text-lg text-[var(--muted)] transition ${
                           activationKeyOpen ? 'rotate-90' : ''
                         }`}
                       >
@@ -421,9 +424,9 @@ export function MobileStudentMenu({
                     </button>
 
                     {activationKeyOpen && (
-                      <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                      <div className="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
                         {loadingKeys ? (
-                          <p className="text-sm font-semibold text-slate-500">
+                          <p className="text-sm font-semibold text-[var(--muted)]">
                             Checking Activation Key...
                           </p>
                         ) : keyError ? (
@@ -432,23 +435,23 @@ export function MobileStudentMenu({
                           </p>
                         ) : activationKey ? (
                           <>
-                            <p className="text-xs font-black uppercase tracking-wider text-red-700">
+                            <p className="text-xs font-black uppercase tracking-wider text-red-700 dark:text-red-300">
                               Your Activation Key
                             </p>
 
-                            <div className="mt-2 rounded-xl border border-red-200 bg-white p-3">
-                              <p className="break-all font-mono text-sm font-black tracking-wide text-slate-900">
+                            <div className="mt-2 rounded-xl border border-red-200 bg-white p-3 dark:border-red-900 dark:bg-slate-900">
+                              <p className="break-all font-mono text-sm font-black tracking-wide text-slate-900 dark:text-white">
                                 {activationKey.key_code}
                               </p>
                             </div>
 
-                            <p className="mt-2 text-xs font-semibold text-red-700">
+                            <p className="mt-2 text-xs font-semibold text-red-700 dark:text-red-300">
                               Permanent access — no expiry
                             </p>
                           </>
                         ) : (
                           <>
-                            <p className="text-sm font-semibold text-slate-600">
+                            <p className="text-sm font-semibold text-[var(--muted)]">
                               No Activation Key assigned.
                             </p>
 
@@ -472,82 +475,77 @@ export function MobileStudentMenu({
 
           {/* APPEARANCE */}
           <section className="mb-7">
-            <h2 className="mb-3 px-1 text-xs font-black uppercase tracking-widest text-slate-400">
+            <h2 className="mb-3 px-1 text-xs font-black uppercase tracking-widest text-[var(--muted)]">
               Appearance
             </h2>
 
-            <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm">
               <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-xl">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-xl dark:bg-orange-950/40">
                   🎨
                 </span>
 
                 <div>
-                  <p className="text-base font-black text-slate-800">
+                  <p className="text-base font-black text-[var(--foreground)]">
                     Theme
                   </p>
 
-                  <p className="text-xs font-medium text-slate-400">
+                  <p className="text-xs font-medium text-[var(--muted)]">
                     Choose how Pinnacle Tutors looks
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
-
-                {/* LIGHT */}
                 <button
                   type="button"
                   onClick={() => setTheme('light')}
                   className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
                     theme === 'light'
                       ? 'bg-orange-600 text-white shadow-sm'
-                      : 'bg-orange-50 text-orange-700 active:bg-orange-100'
+                      : 'bg-[var(--background)] text-[var(--muted)] active:bg-orange-50 dark:active:bg-orange-950/30'
                   }`}
                 >
                   <span className="block text-lg">☀️</span>
                   <span className="mt-1 block">Light</span>
                 </button>
 
-                {/* DARK */}
                 <button
                   type="button"
                   onClick={() => setTheme('dark')}
                   className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
                     theme === 'dark'
-                      ? 'bg-red-700 text-white shadow-sm'
-                      : 'bg-red-50 text-red-700 active:bg-red-100'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-[var(--background)] text-[var(--muted)] active:bg-slate-200'
                   }`}
                 >
                   <span className="block text-lg">🌙</span>
                   <span className="mt-1 block">Dark</span>
                 </button>
 
-                {/* SYSTEM */}
                 <button
                   type="button"
                   onClick={() => setTheme('system')}
                   className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
                     theme === 'system'
-                      ? 'bg-orange-600 text-white shadow-sm'
-                      : 'bg-orange-50 text-orange-700 active:bg-orange-100'
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'bg-[var(--background)] text-[var(--muted)] active:bg-red-50 dark:active:bg-red-950/30'
                   }`}
                 >
                   <span className="block text-lg">⚙️</span>
                   <span className="mt-1 block">System</span>
                 </button>
-
               </div>
             </div>
           </section>
 
           {/* COMMUNITY CTA */}
-          <div className="mb-6 rounded-2xl bg-orange-50 p-5">
-            <p className="text-base font-black text-orange-900">
+          <div className="mb-6 rounded-2xl bg-orange-50 p-5 dark:bg-orange-950/30">
+            <p className="text-base font-black text-orange-950 dark:text-orange-100">
               Join the Pinnacle Family 🚀
             </p>
 
-            <p className="mt-1 text-sm leading-6 text-orange-700">
+            <p className="mt-1 text-sm leading-6 text-orange-800 dark:text-orange-200">
               Get announcements, motivation and study updates.
             </p>
 
@@ -562,8 +560,10 @@ export function MobileStudentMenu({
         </div>
 
         {/* LOGOUT */}
-        <div className="shrink-0 border-t border-orange-100 bg-white p-4">
-          <LogoutButton className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-500 active:bg-red-50 active:text-red-600" />
+        <div className="shrink-0 border-t border-[var(--border)] bg-[var(--card)] p-4">
+          <LogoutButton
+            className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-[var(--muted)] active:bg-red-50 active:text-red-600 dark:active:bg-red-950/30"
+          />
         </div>
       </aside>
     </div>,
