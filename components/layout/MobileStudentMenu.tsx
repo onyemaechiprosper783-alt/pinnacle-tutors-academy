@@ -49,7 +49,7 @@ export function MobileMenuTrigger() {
       type="button"
       onClick={() => setOpen(true)}
       aria-label="Open student menu"
-      className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-xl text-slate-700 shadow-sm active:scale-95"
+      className="flex h-10 w-10 items-center justify-center rounded-xl border border-orange-200 bg-white text-xl text-orange-700 shadow-sm active:scale-95"
     >
       ☰
     </button>
@@ -65,7 +65,7 @@ export function MobileMenuBottomButton() {
       onClick={() => setOpen(true)}
       aria-label="Open student menu"
       className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 transition ${
-        open ? 'text-emerald-600' : 'text-slate-500'
+        open ? 'text-orange-600' : 'text-slate-500'
       }`}
     >
       <span className="text-lg">☰</span>
@@ -264,10 +264,11 @@ export function MobileStudentMenu({
       />
 
       <aside className="absolute inset-y-0 left-0 flex h-full w-[92%] max-w-sm flex-col bg-slate-50 shadow-xl">
+
         {/* HEADER */}
-        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <header className="flex shrink-0 items-center justify-between border-b border-orange-100 bg-white px-5 py-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-lg font-black text-white shadow-sm">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-600 text-lg font-black text-white shadow-sm">
               P
             </div>
 
@@ -276,7 +277,7 @@ export function MobileStudentMenu({
                 Pinnacle Tutors
               </p>
 
-              <p className="text-xs font-semibold text-emerald-600">
+              <p className="text-xs font-semibold text-orange-600">
                 Student Menu
               </p>
             </div>
@@ -286,16 +287,16 @@ export function MobileStudentMenu({
             type="button"
             onClick={closeMenu}
             aria-label="Close menu"
-            className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-2xl font-medium text-slate-700 active:scale-95"
+            className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-2xl font-medium text-orange-700 active:scale-95"
           >
             ×
           </button>
         </header>
 
         {/* STUDENT PROFILE */}
-        <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
-          <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-lg font-black text-emerald-700">
+        <div className="shrink-0 border-b border-orange-100 bg-white px-5 py-4">
+          <div className="flex items-center gap-3 rounded-2xl bg-orange-50 p-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-100 text-lg font-black text-orange-700">
               {firstName.charAt(0).toUpperCase()}
             </div>
 
@@ -325,9 +326,9 @@ export function MobileStudentMenu({
                     key={item.href}
                     href={item.href}
                     onClick={closeMenu}
-                    className="flex min-h-[56px] items-center gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-base font-bold text-slate-700 shadow-sm transition active:scale-[0.99] active:bg-emerald-50"
+                    className="flex min-h-[56px] items-center gap-4 rounded-2xl border border-orange-100 bg-white px-4 py-3.5 text-base font-bold text-slate-700 shadow-sm transition active:scale-[0.99] active:bg-orange-50"
                   >
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-xl">
                       {item.icon}
                     </span>
 
@@ -346,9 +347,9 @@ export function MobileStudentMenu({
                     <button
                       type="button"
                       onClick={toggleProductKey}
-                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-left text-base font-bold text-slate-700 shadow-sm active:bg-emerald-50"
+                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-orange-100 bg-white px-4 py-3.5 text-left text-base font-bold text-slate-700 shadow-sm active:bg-orange-50"
                     >
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-xl">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-xl">
                         🔑
                       </span>
 
@@ -364,7 +365,7 @@ export function MobileStudentMenu({
                     </button>
 
                     {productKeyOpen && (
-                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                      <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
                         {loadingKeys ? (
                           <p className="text-sm font-semibold text-slate-500">
                             Checking Product Key...
@@ -375,17 +376,17 @@ export function MobileStudentMenu({
                           </p>
                         ) : productKey ? (
                           <>
-                            <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
+                            <p className="text-xs font-black uppercase tracking-wider text-orange-700">
                               Your Product Key
                             </p>
 
-                            <div className="mt-2 rounded-xl border border-emerald-200 bg-white p-3">
+                            <div className="mt-2 rounded-xl border border-orange-200 bg-white p-3">
                               <p className="break-all font-mono text-sm font-black tracking-wide text-slate-900">
                                 {productKey.key_code}
                               </p>
                             </div>
 
-                            <p className="mt-2 text-xs font-semibold text-emerald-700">
+                            <p className="mt-2 text-xs font-semibold text-orange-700">
                               Valid until:{' '}
                               {formatExpiry(productKey.expires_at)}
                             </p>
@@ -402,9 +403,9 @@ export function MobileStudentMenu({
                     <button
                       type="button"
                       onClick={toggleActivationKey}
-                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-left text-base font-bold text-slate-700 shadow-sm active:bg-purple-50"
+                      className="flex min-h-[56px] w-full items-center gap-4 rounded-2xl border border-red-100 bg-white px-4 py-3.5 text-left text-base font-bold text-slate-700 shadow-sm active:bg-red-50"
                     >
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-xl">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-xl">
                         🔐
                       </span>
 
@@ -420,7 +421,7 @@ export function MobileStudentMenu({
                     </button>
 
                     {activationKeyOpen && (
-                      <div className="rounded-2xl border border-purple-100 bg-purple-50 p-4">
+                      <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
                         {loadingKeys ? (
                           <p className="text-sm font-semibold text-slate-500">
                             Checking Activation Key...
@@ -431,17 +432,17 @@ export function MobileStudentMenu({
                           </p>
                         ) : activationKey ? (
                           <>
-                            <p className="text-xs font-black uppercase tracking-wider text-purple-700">
+                            <p className="text-xs font-black uppercase tracking-wider text-red-700">
                               Your Activation Key
                             </p>
 
-                            <div className="mt-2 rounded-xl border border-purple-200 bg-white p-3">
+                            <div className="mt-2 rounded-xl border border-red-200 bg-white p-3">
                               <p className="break-all font-mono text-sm font-black tracking-wide text-slate-900">
                                 {activationKey.key_code}
                               </p>
                             </div>
 
-                            <p className="mt-2 text-xs font-semibold text-purple-700">
+                            <p className="mt-2 text-xs font-semibold text-red-700">
                               Permanent access — no expiry
                             </p>
                           </>
@@ -455,7 +456,7 @@ export function MobileStudentMenu({
                               href="https://wa.me/2347051101464?text=Hello%20Pinnacle%20Tutors%2C%20I%20want%20to%20request%20an%20Activation%20Key."
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-3 flex min-h-[48px] w-full items-center justify-center rounded-xl bg-purple-600 px-4 py-3 text-sm font-black text-white active:bg-purple-700"
+                              className="mt-3 flex min-h-[48px] w-full items-center justify-center rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white active:bg-red-700"
                             >
                               Request Activation Key →
                             </a>
@@ -475,9 +476,9 @@ export function MobileStudentMenu({
               Appearance
             </h2>
 
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-xl">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-xl">
                   🎨
                 </span>
 
@@ -493,62 +494,67 @@ export function MobileStudentMenu({
               </div>
 
               <div className="grid grid-cols-3 gap-2">
+
+                {/* LIGHT */}
                 <button
                   type="button"
                   onClick={() => setTheme('light')}
                   className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
                     theme === 'light'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                      ? 'bg-orange-600 text-white shadow-sm'
+                      : 'bg-orange-50 text-orange-700 active:bg-orange-100'
                   }`}
                 >
                   <span className="block text-lg">☀️</span>
                   <span className="mt-1 block">Light</span>
                 </button>
 
+                {/* DARK */}
                 <button
                   type="button"
                   onClick={() => setTheme('dark')}
                   className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
                     theme === 'dark'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                      ? 'bg-red-700 text-white shadow-sm'
+                      : 'bg-red-50 text-red-700 active:bg-red-100'
                   }`}
                 >
                   <span className="block text-lg">🌙</span>
                   <span className="mt-1 block">Dark</span>
                 </button>
 
+                {/* SYSTEM */}
                 <button
                   type="button"
                   onClick={() => setTheme('system')}
                   className={`rounded-xl px-2 py-3 text-center text-xs font-bold transition ${
                     theme === 'system'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+                      ? 'bg-orange-600 text-white shadow-sm'
+                      : 'bg-orange-50 text-orange-700 active:bg-orange-100'
                   }`}
                 >
                   <span className="block text-lg">⚙️</span>
                   <span className="mt-1 block">System</span>
                 </button>
+
               </div>
             </div>
           </section>
 
           {/* COMMUNITY CTA */}
-          <div className="mb-6 rounded-2xl bg-emerald-50 p-5">
-            <p className="text-base font-black text-emerald-900">
+          <div className="mb-6 rounded-2xl bg-orange-50 p-5">
+            <p className="text-base font-black text-orange-900">
               Join the Pinnacle Family 🚀
             </p>
 
-            <p className="mt-1 text-sm leading-6 text-emerald-700">
+            <p className="mt-1 text-sm leading-6 text-orange-700">
               Get announcements, motivation and study updates.
             </p>
 
             <Link
               href="/community"
               onClick={closeMenu}
-              className="mt-4 flex min-h-[52px] w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white active:bg-emerald-700"
+              className="mt-4 flex min-h-[52px] w-full items-center justify-center rounded-xl bg-orange-600 px-4 py-3 text-sm font-black text-white active:bg-orange-700"
             >
               Join Community →
             </Link>
@@ -556,7 +562,7 @@ export function MobileStudentMenu({
         </div>
 
         {/* LOGOUT */}
-        <div className="shrink-0 border-t border-slate-200 bg-white p-4">
+        <div className="shrink-0 border-t border-orange-100 bg-white p-4">
           <LogoutButton className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-500 active:bg-red-50 active:text-red-600" />
         </div>
       </aside>
