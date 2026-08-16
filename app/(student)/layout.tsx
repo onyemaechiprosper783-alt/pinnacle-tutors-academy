@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/supabase/server';
 import { LogoutButton } from '@/components/layout/LogoutButton';
+import AnnouncementBell from '@/components/layout/AnnouncementBell';
 import {
   MobileMenuProvider,
   MobileMenuTrigger,
@@ -81,10 +82,11 @@ export default async function StudentLayout({
           <aside className="hidden w-72 shrink-0 border-r border-[var(--border)] bg-[var(--card)] transition-colors duration-200 md:flex md:flex-col">
 
             <div className="border-b border-[var(--border)] px-5 py-5">
-              <Link href="/dashboard" className="flex items-center gap-3">
-
-                {/* LOGO */}
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-3"
+              >
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
                   <img
                     src="/pinnacle-logo.png"
                     alt="Pinnacle Tutors Academy"
@@ -106,7 +108,10 @@ export default async function StudentLayout({
 
             <nav className="flex-1 overflow-y-auto px-3 py-5">
               {NAV_GROUPS.map((group) => (
-                <div key={group.title} className="mb-6">
+                <div
+                  key={group.title}
+                  className="mb-6"
+                >
                   <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-widest text-[var(--muted)]">
                     {group.title}
                   </p>
@@ -130,7 +135,7 @@ export default async function StudentLayout({
               ))}
 
               <div className="mt-2 rounded-2xl bg-orange-50 p-4 dark:bg-orange-950/40">
-                <p className="text-sm font-black text-orange-950 dark:text-orange-200">
+                <p className="text-sm font-black text-orange-900 dark:text-orange-200">
                   Join the Pinnacle Family 🚀
                 </p>
 
@@ -171,12 +176,18 @@ export default async function StudentLayout({
           {/* MAIN CONTENT */}
           <div className="min-w-0 flex-1">
 
+            {/* DESKTOP TOP BAR */}
+            <div className="hidden items-center justify-end border-b border-[var(--border)] bg-[var(--card)] px-6 py-3 md:flex">
+              <AnnouncementBell />
+            </div>
+
             {/* MOBILE HEADER */}
             <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur transition-colors duration-200 md:hidden">
-              <Link href="/dashboard" className="flex items-center gap-2.5">
-
-                {/* LOGO */}
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-2.5"
+              >
+                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
                   <img
                     src="/pinnacle-logo.png"
                     alt="Pinnacle Tutors Academy"
@@ -195,7 +206,10 @@ export default async function StudentLayout({
                 </div>
               </Link>
 
-              <MobileMenuTrigger />
+              <div className="flex items-center gap-2">
+                <AnnouncementBell />
+                <MobileMenuTrigger />
+              </div>
             </header>
 
             {/* PAGE CONTENT */}
@@ -212,7 +226,9 @@ export default async function StudentLayout({
                     href={item.href}
                     className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[var(--muted)] transition hover:text-orange-600"
                   >
-                    <span className="text-lg">{item.icon}</span>
+                    <span className="text-lg">
+                      {item.icon}
+                    </span>
 
                     <span className="truncate text-[10px] font-semibold">
                       {item.label}
