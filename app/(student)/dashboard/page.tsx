@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import AnnouncementBell from '@/components/AnnouncementBell';
 import { getCurrentProfile } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -82,6 +81,7 @@ type Testimonial = {
   score: string;
   year: number;
   message: string;
+  photo_url: string | null;
 };
 
 export default async function StudentDashboard() {
@@ -98,7 +98,7 @@ export default async function StudentDashboard() {
     const { data } = await admin
       .from('testimonials')
       .select(
-        'id, student_name, exam_type, score, year, message'
+        'id, student_name, exam_type, score, year, message, photo_url'
       )
       .eq('is_published', true)
       .order('year', { ascending: false })
@@ -112,11 +112,6 @@ export default async function StudentDashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-6">
-
-      {/* ANNOUNCEMENTS */}
-      <div className="flex justify-end">
-        <AnnouncementBell />
-      </div>
 
       {/* HERO */}
       <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-500 px-6 py-8 text-white shadow-xl sm:px-8 sm:py-10">
@@ -297,10 +292,21 @@ export default async function StudentDashboard() {
                 <div className="absolute right-0 top-0 h-20 w-20 rounded-bl-full bg-emerald-50" />
 
                 <div className="relative">
+
+                  {/* STUDENT PHOTO */}
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-xl font-black text-emerald-700">
-                      {item.student_name.charAt(0).toUpperCase()}
-                    </div>
+
+                    {item.photo_url ? (
+                      <img
+                        src={item.photo_url}
+                        alt={item.student_name}
+                        className="h-14 w-14 rounded-full object-cover ring-4 ring-emerald-50"
+                      />
+                    ) : (
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-xl font-black text-emerald-700">
+                        {item.student_name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
 
                     <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700">
                       {item.exam_type}
