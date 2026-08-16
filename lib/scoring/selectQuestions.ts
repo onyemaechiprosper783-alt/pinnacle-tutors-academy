@@ -6,11 +6,10 @@ export interface SelectQuestionsOptions {
   questionCount: number;
   difficulty?: 'easy' | 'medium' | 'hard';
   examType?: 'jamb' | 'waec' | 'utme' | 'general';
+  year?: number;
 }
 
-// Selects eligible active questions and returns a shuffled subset. Uses
-// Postgres random ordering server-side rather than pulling the whole table
-// into memory — safe even once the bank grows into the thousands.
+// Selects eligible active questions and returns a shuffled subset.
 export async function selectQuestions(opts: SelectQuestionsOptions) {
   const admin = createAdminClient();
 
@@ -21,17 +20,26 @@ export async function selectQuestions(opts: SelectQuestionsOptions) {
     .contains('modes', [opts.mode])
     .in('subject_id', opts.subjectIds);
 
-  if (opts.difficulty) query = query.eq('difficulty', opts.difficulty);
-  if (opts.examType) query = query.eq('exam_type', opts.examType);
+  if (opts.difficulty) {
+    query = query.eq('difficulty', opts.difficulty);
+  }
+
+  if (opts.examType) {
+    query = query.eq('exam_type', opts.examType);
+  }
+
+  if (opts.year) {
+    query = query.eq('year', opts.year);
+  }
 
   const { data, error } = await query;
-  if (error) throw new Error('Could not load questions.');
 
-  // Shuffle (Fisher–Yates) then take the requested count. For very large
-  // banks this could be replaced with `ORDER BY random() LIMIT n` executed
-  // as raw SQL via an RPC function, but this is fine up to tens of
-  // thousands of rows per subject.
+  if (error) {
+    throw new Error('Could not load questions.');
+  }
+
   const pool = [...(data ?? [])];
+
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
