@@ -82,8 +82,14 @@ export default async function StudentLayout({
 
             <div className="border-b border-[var(--border)] px-5 py-5">
               <Link href="/dashboard" className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-lg font-black text-white shadow-sm">
-                  P
+
+                {/* LOGO */}
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+                  <img
+                    src="/pinnacle-logo.png"
+                    alt="Pinnacle Tutors Academy"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
 
                 <div>
@@ -91,7 +97,7 @@ export default async function StudentLayout({
                     Pinnacle Tutors
                   </p>
 
-                  <p className="text-xs font-medium text-emerald-600">
+                  <p className="text-xs font-medium text-orange-600">
                     Learn • Practice • Succeed
                   </p>
                 </div>
@@ -110,7 +116,7 @@ export default async function StudentLayout({
                       <Link
                         key={item.href}
                         href={item.href}
-                        className="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-400"
+                        className="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-orange-50 hover:text-orange-700 dark:hover:bg-orange-950/40 dark:hover:text-orange-400"
                       >
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--background)] text-base transition group-hover:bg-[var(--card)]">
                           {item.icon}
@@ -123,18 +129,18 @@ export default async function StudentLayout({
                 </div>
               ))}
 
-              <div className="mt-2 rounded-2xl bg-emerald-50 p-4 dark:bg-emerald-950/40">
-                <p className="text-sm font-black text-emerald-900 dark:text-emerald-200">
+              <div className="mt-2 rounded-2xl bg-orange-50 p-4 dark:bg-orange-950/40">
+                <p className="text-sm font-black text-orange-950 dark:text-orange-200">
                   Join the Pinnacle Family 🚀
                 </p>
 
-                <p className="mt-1 text-xs leading-5 text-emerald-700 dark:text-emerald-300">
+                <p className="mt-1 text-xs leading-5 text-orange-700 dark:text-orange-300">
                   Get announcements, motivation and study updates.
                 </p>
 
                 <Link
                   href="/community"
-                  className="mt-3 flex w-full items-center justify-center rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white transition hover:bg-emerald-700"
+                  className="mt-3 flex w-full items-center justify-center rounded-xl bg-orange-600 px-3 py-2.5 text-xs font-black text-white transition hover:bg-orange-700"
                 >
                   Join Community →
                 </Link>
@@ -143,7 +149,7 @@ export default async function StudentLayout({
 
             <div className="border-t border-[var(--border)] p-4">
               <div className="mb-3 flex items-center gap-3 rounded-xl bg-[var(--background)] p-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-700 dark:bg-orange-950 dark:text-orange-300">
                   {firstName.charAt(0).toUpperCase()}
                 </div>
 
@@ -168,8 +174,14 @@ export default async function StudentLayout({
             {/* MOBILE HEADER */}
             <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 backdrop-blur transition-colors duration-200 md:hidden">
               <Link href="/dashboard" className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-sm font-black text-white shadow-sm">
-                  P
+
+                {/* LOGO */}
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+                  <img
+                    src="/pinnacle-logo.png"
+                    alt="Pinnacle Tutors Academy"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
 
                 <div>
@@ -177,7 +189,7 @@ export default async function StudentLayout({
                     Pinnacle Tutors
                   </p>
 
-                  <p className="text-[10px] font-medium text-emerald-600">
+                  <p className="text-[10px] font-medium text-orange-600">
                     Academy
                   </p>
                 </div>
@@ -198,7 +210,7 @@ export default async function StudentLayout({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[var(--muted)] transition hover:text-emerald-600"
+                    className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[var(--muted)] transition hover:text-orange-600"
                   >
                     <span className="text-lg">{item.icon}</span>
 
