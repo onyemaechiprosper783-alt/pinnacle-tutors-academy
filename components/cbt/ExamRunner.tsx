@@ -48,14 +48,23 @@ export function ExamRunner({
       setSubmitting(true);
 
       try {
-        await fetch(`/api/exams/${attemptId}/submit`, {
+        const res = await fetch(`/api/exams/${attemptId}/submit`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ auto_submitted: autoSubmitted }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            auto_submitted: autoSubmitted,
+          }),
         });
 
+        if (!res.ok) {
+          throw new Error('Could not submit exam.');
+        }
+
         router.push(`/results/${attemptId}`);
-      } catch {
+      } catch (error) {
+        console.error('Submit error:', error);
         setSubmitting(false);
       }
     },
@@ -67,8 +76,9 @@ export function ExamRunner({
   async function selectAnswer(letter: 'A' | 'B' | 'C' | 'D') {
     if (!currentQuestion || answerLoading) return;
 
-    // In practice mode, don't allow changing an answer after feedback.
-    if (mode === 'practice' && feedback[currentQuestion.id]) return;
+    if (mode === 'practice' && feedback[currentQuestion.id]) {
+      return;
+    }
 
     setAnswers((prev) => ({
       ...prev,
@@ -98,26 +108,18 @@ export function ExamRunner({
         throw new Error(data.error ?? 'Could not save answer.');
       }
 
-      // Practice gives immediate feedback.
-      if (mode === 'practice') {
-        if (
-          data.correct_answer === 'A' ||
-          data.correct_answer === 'B' ||
-          data.correct_answer === 'C' ||
-          data.correct_answer === 'D'
-        ) {
-          setFeedback((prev) => ({
-            ...prev,
-            [currentQuestion.id]: {
-              is_correct: Boolean(data.is_correct),
-              correct_answer: data.correct_answer,
-              explanation: data.explanation ?? null,
-            },
-          }));
-        }
+      if (mode === 'practice' && data.correct_answer) {
+        setFeedback((prev) => ({
+          ...prev,
+          [currentQuestion.id]: {
+            is_correct: Boolean(data.is_correct),
+            correct_answer: data.correct_answer,
+            explanation: data.explanation ?? null,
+          },
+        }));
       }
     } catch (error) {
-      console.error('Answer submission error:', error);
+      console.error('Answer error:', error);
     } finally {
       setAnswerLoading(false);
     }
@@ -138,7 +140,7 @@ export function ExamRunner({
   }
 
   return (
-    <div className="mx-auto max-w-3xl pb-28">
+    <div className="mx-auto min-h-screen w-full max-w-3xl pb-4">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <span className="text-sm font-medium text-slate-500">
@@ -156,7 +158,9 @@ export function ExamRunner({
             ⏱ {timer.display}
           </span>
         ) : (
-          <span className="text-sm text-slate-400">Untimed</span>
+          <span className="text-sm text-slate-400">
+            Untimed
+          </span>
         )}
       </div>
 
@@ -185,7 +189,7 @@ export function ExamRunner({
         })}
       </div>
 
-      {/* Question */}
+      {/* Question card */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p className="mb-5 text-lg font-medium leading-relaxed text-slate-900">
           {currentQuestion.question_text}
@@ -287,8 +291,8 @@ export function ExamRunner({
         )}
       </div>
 
-      {/* Navigation */}
-      <div className="mt-4 flex items-center justify-between gap-3">
+      {/* Question navigation buttons */}
+      <div className="mt-4 flex items-center justify-between gap-3 pb-24">
         <Button
           variant="secondary"
           disabled={currentIndex === 0}
@@ -301,7 +305,9 @@ export function ExamRunner({
 
         <Button
           variant="ghost"
-          onClick={() => setShowCalculator((s) => !s)}
+          onClick={() =>
+            setShowCalculator((s) => !s)
+          }
         >
           {showCalculator ? 'Hide' : 'Calculator'}
         </Button>
@@ -317,41 +323,46 @@ export function ExamRunner({
             Next
           </Button>
         ) : (
-          <Button onClick={() => setShowConfirm(true)}>
+          <Button
+            onClick={() => setShowConfirm(true)}
+          >
             Submit
           </Button>
         )}
       </div>
 
+      {/* MOBILE + DESKTOP SUBMIT BAR */}
+      <div className="fixed inset-x-0 bottom-0 z-[100] border-t border-slate-200 bg-white px-3 py-3 shadow-[0_-4px_15px_rgba(0,0,0,0.12)]">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+          <span className="text-xs font-medium text-slate-500 sm:text-sm">
+            {answeredCount} of {questions.length} answered
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setShowConfirm(true)}
+            className="min-h-[50px] touch-manipulation rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white shadow-md active:scale-95"
+          >
+            End & Submit
+          </button>
+        </div>
+      </div>
+
       {/* Calculator */}
       {showCalculator && (
-        <div className="fixed bottom-20 right-4 z-20 md:bottom-4">
+        <div className="fixed bottom-20 right-4 z-[110]">
           <Calculator
-            onClose={() => setShowCalculator(false)}
+            onClose={() =>
+              setShowCalculator(false)
+            }
           />
         </div>
       )}
 
-      {/* Always-accessible submit bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-slate-200 bg-white px-4 py-3 shadow-lg">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <span className="text-sm text-slate-500">
-            {answeredCount} of {questions.length} answered
-          </span>
-
-          <Button
-            variant="danger"
-            onClick={() => setShowConfirm(true)}
-          >
-            End & Submit
-          </Button>
-        </div>
-      </div>
-
-      {/* Confirmation */}
+      {/* Confirmation modal */}
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="mb-2 text-lg font-bold text-slate-900">
               Submit your exam?
             </h3>
@@ -359,16 +370,20 @@ export function ExamRunner({
             <p className="mb-5 text-sm text-slate-500">
               You&apos;ve answered {answeredCount} of{' '}
               {questions.length} questions.
+
               {answeredCount < questions.length &&
-                ' Unanswered questions will be marked incorrect.'}{' '}
-              This can&apos;t be undone.
+                ' Unanswered questions will be marked incorrect.'}
+
+              {' '}This can&apos;t be undone.
             </p>
 
             <div className="flex gap-3">
               <Button
                 variant="secondary"
                 fullWidth
-                onClick={() => setShowConfirm(false)}
+                onClick={() =>
+                  setShowConfirm(false)
+                }
               >
                 Keep working
               </Button>
@@ -377,7 +392,9 @@ export function ExamRunner({
                 variant="danger"
                 fullWidth
                 loading={submitting}
-                onClick={() => handleSubmit(false)}
+                onClick={() =>
+                  handleSubmit(false)
+                }
               >
                 Submit
               </Button>
