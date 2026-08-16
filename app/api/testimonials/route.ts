@@ -7,11 +7,17 @@ const testimonialSchema = z.object({
   student_name: z.string().trim().min(1).max(120),
   exam_type: z.enum(['jamb', 'waec']),
   score: z.string().trim().min(1).max(50),
-  year: z.number().int().min(2000).max(2100),
+  year: z.coerce.number().int().min(2000).max(2100),
   message: z.string().trim().min(1).max(1000),
-  photo_url: z.string().trim().url().nullable().optional(),
-  is_published: z.boolean().default(true),
+  is_published: z
+    .union([z.boolean(), z.string()])
+    .transform((value) => {
+      if (typeof value === 'boolean') return value;
+      return value === 'true';
+    }),
 });
+
+const PHOTO_BUCKET = 'testimonial-photos';
 
 export async function GET() {
   try {
@@ -59,7 +65,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  let uploadedPhotoPath: string | null = null;
+
   try {
+    // Check admin permission
     const caller = await getCurrentProfile();
 
     if (
@@ -72,8 +81,41 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json().catch(() => null);
-    const parsed = testimonialSchema.safeParse(body);
+    // Read FormData because the admin page sends a photo
+    const formData = await request.formData();
+
+    const studentName = String(
+      formData.get('student_name') ?? ''
+    );
+
+    const examType = String(
+      formData.get('exam_type') ?? ''
+    );
+
+    const score = String(
+      formData.get('score') ?? ''
+    );
+
+    const year = String(
+      formData.get('year') ?? ''
+    );
+
+    const message = String(
+      formData.get('message') ?? ''
+    );
+
+    const isPublished = String(
+      formData.get('is_published') ?? 'true'
+    );
+
+    const parsed = testimonialSchema.safeParse({
+      student_name: studentName,
+      exam_type: examType,
+      score,
+      year,
+      message,
+      is_published: isPublished,
+    });
 
     if (!parsed.success) {
       console.error(
@@ -91,13 +133,86 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
 
+    // Get photo from FormData
+    const photo = formData.get('photo');
+
+    let photoUrl: string | null = null;
+
+    // Upload photo if one was selected
+    if (photo instanceof File && photo.size > 0) {
+      // Maximum 5MB
+      if (photo.size > 5 * 1024 * 1024) {
+        return NextResponse.json(
+          {
+            error: 'Photo must be 5MB or smaller.',
+          },
+          { status: 400 }
+        );
+      }
+
+      // Only allow images
+      if (!photo.type.startsWith('image/')) {
+        return NextResponse.json(
+          {
+            error: 'Please upload a valid image file.',
+          },
+          { status: 400 }
+        );
+      }
+
+      // Get file extension
+      const originalName = photo.name || '';
+      const extension =
+        originalName.split('.').pop()?.toLowerCase() || 'jpg';
+
+      // Create a unique filename
+      const fileName = `${crypto.randomUUID()}.${extension}`;
+
+      uploadedPhotoPath = `testimonials/${fileName}`;
+
+      const { error: uploadError } = await admin.storage
+        .from(PHOTO_BUCKET)
+        .upload(
+          uploadedPhotoPath,
+          photo,
+          {
+            contentType: photo.type,
+            upsert: false,
+          }
+        );
+
+      if (uploadError) {
+        console.error('TESTIMONIAL PHOTO UPLOAD ERROR:', {
+          message: uploadError.message,
+          name: uploadError.name,
+        });
+
+        return NextResponse.json(
+          {
+            error:
+              uploadError.message ||
+              'Could not upload student photo.',
+          },
+          { status: 500 }
+        );
+      }
+
+      // Get public URL
+      const { data: publicUrlData } = admin.storage
+        .from(PHOTO_BUCKET)
+        .getPublicUrl(uploadedPhotoPath);
+
+      photoUrl = publicUrlData.publicUrl;
+    }
+
+    // Save testimonial
     const testimonialData = {
       student_name: parsed.data.student_name,
       exam_type: parsed.data.exam_type,
       score: parsed.data.score,
       year: parsed.data.year,
       message: parsed.data.message,
-      photo_url: parsed.data.photo_url ?? null,
+      photo_url: photoUrl,
       is_published: parsed.data.is_published,
     };
 
@@ -116,9 +231,18 @@ export async function POST(request: Request) {
         code: error.code,
       });
 
+      // Remove uploaded photo if database insert failed
+      if (uploadedPhotoPath) {
+        await admin.storage
+          .from(PHOTO_BUCKET)
+          .remove([uploadedPhotoPath]);
+      }
+
       return NextResponse.json(
         {
-          error: error.message || 'Could not save testimonial.',
+          error:
+            error.message ||
+            'Could not save testimonial.',
           code: error.code,
           details: error.details,
           hint: error.hint,
@@ -136,9 +260,26 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('TESTIMONIAL POST EXCEPTION:', error);
 
+    // Clean up photo if something unexpected happened
+    if (uploadedPhotoPath) {
+      try {
+        const admin = createAdminClient();
+
+        await admin.storage
+          .from(PHOTO_BUCKET)
+          .remove([uploadedPhotoPath]);
+      } catch (cleanupError) {
+        console.error(
+          'TESTIMONIAL PHOTO CLEANUP ERROR:',
+          cleanupError
+        );
+      }
+    }
+
     return NextResponse.json(
       {
-        error: 'Something went wrong while saving the testimonial.',
+        error:
+          'Something went wrong while saving the testimonial.',
       },
       { status: 500 }
     );
