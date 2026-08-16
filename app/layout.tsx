@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import PwaRegister from '../components/PwaRegister';
-import ThemeProvider from '../components/ThemeProvider';
 
 export const metadata: Metadata = {
   title: 'Pinnacle Tutors Academy — Your Ultimate JAMB & WAEC Success Partner',
@@ -30,10 +29,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <ThemeProvider>
-          <PwaRegister />
-          {children}
-        </ThemeProvider>
+        <PwaRegister />
+        {children}
       </body>
     </html>
   );
