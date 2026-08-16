@@ -91,10 +91,6 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-      The admin page sends FormData because it contains
-      both text fields and an optional photo.
-    */
     const formData = await request.formData();
 
     const studentName = String(
@@ -148,6 +144,7 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
 
     let photoUrl: string | null = null;
+    let uploadedPhotoPath: string | null = null;
 
     /* =========================
        PHOTO UPLOAD
@@ -158,14 +155,18 @@ export async function POST(request: Request) {
     if (photo instanceof File && photo.size > 0) {
       if (!photo.type.startsWith('image/')) {
         return NextResponse.json(
-          { error: 'The uploaded file must be an image.' },
+          {
+            error: 'The uploaded file must be an image.',
+          },
           { status: 400 }
         );
       }
 
       if (photo.size > 5 * 1024 * 1024) {
         return NextResponse.json(
-          { error: 'Photo must be 5MB or smaller.' },
+          {
+            error: 'Photo must be 5MB or smaller.',
+          },
           { status: 400 }
         );
       }
@@ -184,7 +185,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error:
-              'Only JPG, JPEG, PNG and WebP images are allowed.',
+              'Only JPG, JPEG and WebP images are allowed.',
           },
           { status: 400 }
         );
@@ -192,15 +193,15 @@ export async function POST(request: Request) {
 
       const fileName = `${crypto.randomUUID()}.${extension}`;
 
-      const filePath = `testimonials/${fileName}`;
+      uploadedPhotoPath = `testimonials/${fileName}`;
 
       const fileBuffer = Buffer.from(
         await photo.arrayBuffer()
       );
 
       const { error: uploadError } = await admin.storage
-        .from('testimonials')
-        .upload(filePath, fileBuffer, {
+        .from('testimonial-photos')
+        .upload(uploadedPhotoPath, fileBuffer, {
           contentType: photo.type,
           upsert: false,
         });
@@ -213,18 +214,16 @@ export async function POST(request: Request) {
 
         return NextResponse.json(
           {
-            error:
-              'Could not upload the student photo.',
+            error: 'Could not upload the student photo.',
             details: uploadError.message,
           },
           { status: 500 }
         );
       }
 
-      const { data: publicUrlData } =
-        admin.storage
-          .from('testimonials')
-          .getPublicUrl(filePath);
+      const { data: publicUrlData } = admin.storage
+        .from('testimonial-photos')
+        .getPublicUrl(uploadedPhotoPath);
 
       photoUrl = publicUrlData.publicUrl;
     }
@@ -256,21 +255,10 @@ export async function POST(request: Request) {
         error
       );
 
-      /*
-        If the database insert fails after the photo
-        was uploaded, remove the photo so we don't
-        leave an unused file in Storage.
-      */
-      if (photoUrl) {
-        const urlParts = photoUrl.split(
-          '/storage/v1/object/public/testimonials/'
-        );
-
-        if (urlParts[1]) {
-          await admin.storage
-            .from('testimonials')
-            .remove([urlParts[1]]);
-        }
+      if (uploadedPhotoPath) {
+        await admin.storage
+          .from('testimonial-photos')
+          .remove([uploadedPhotoPath]);
       }
 
       return NextResponse.json(
