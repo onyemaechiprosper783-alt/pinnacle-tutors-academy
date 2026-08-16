@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { getCurrentProfile } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+const PHOTO_BUCKET = 'testimonial-photos';
+
 const testimonialSchema = z.object({
   student_name: z.string().trim().min(1).max(120),
   exam_type: z.enum(['jamb', 'waec']),
@@ -11,13 +13,10 @@ const testimonialSchema = z.object({
   message: z.string().trim().min(1).max(1000),
   is_published: z
     .union([z.boolean(), z.string()])
-    .transform((value) => {
-      if (typeof value === 'boolean') return value;
-      return value === 'true';
-    }),
+    .transform((value) =>
+      typeof value === 'boolean' ? value : value === 'true'
+    ),
 });
-
-const PHOTO_BUCKET = 'testimonial-photos';
 
 export async function GET() {
   try {
@@ -31,16 +30,11 @@ export async function GET() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('TESTIMONIAL GET ERROR:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
+      console.error('TESTIMONIAL GET ERROR:', error);
 
       return NextResponse.json(
         {
-          error: error.message || 'Could not load testimonials.',
+          error: error.message,
           code: error.code,
           details: error.details,
           hint: error.hint,
@@ -57,7 +51,9 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        error: 'Could not load testimonials.',
+        error: error instanceof Error
+          ? error.message
+          : 'Could not load testimonials.',
       },
       { status: 500 }
     );
@@ -65,10 +61,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  let uploadedPhotoPath: string | null = null;
-
   try {
-    // Check admin permission
     const caller = await getCurrentProfile();
 
     if (
@@ -81,51 +74,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Read FormData because the admin page sends a photo
     const formData = await request.formData();
 
-    const studentName = String(
-      formData.get('student_name') ?? ''
-    );
-
-    const examType = String(
-      formData.get('exam_type') ?? ''
-    );
-
-    const score = String(
-      formData.get('score') ?? ''
-    );
-
-    const year = String(
-      formData.get('year') ?? ''
-    );
-
-    const message = String(
-      formData.get('message') ?? ''
-    );
-
-    const isPublished = String(
-      formData.get('is_published') ?? 'true'
-    );
-
     const parsed = testimonialSchema.safeParse({
-      student_name: studentName,
-      exam_type: examType,
-      score,
-      year,
-      message,
-      is_published: isPublished,
+      student_name: String(formData.get('student_name') ?? ''),
+      exam_type: String(formData.get('exam_type') ?? ''),
+      score: String(formData.get('score') ?? ''),
+      year: String(formData.get('year') ?? ''),
+      message: String(formData.get('message') ?? ''),
+      is_published: String(
+        formData.get('is_published') ?? 'true'
+      ),
     });
 
     if (!parsed.success) {
-      console.error(
-        'TESTIMONIAL VALIDATION ERROR:',
-        parsed.error.flatten()
-      );
-
       return NextResponse.json(
         {
           error: 'Invalid testimonial information.',
+          details: parsed.error.flatten(),
         },
         { status: 400 }
       );
@@ -133,14 +99,11 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
 
-    // Get photo from FormData
     const photo = formData.get('photo');
 
     let photoUrl: string | null = null;
 
-    // Upload photo if one was selected
     if (photo instanceof File && photo.size > 0) {
-      // Maximum 5MB
       if (photo.size > 5 * 1024 * 1024) {
         return NextResponse.json(
           {
@@ -150,7 +113,6 @@ export async function POST(request: Request) {
         );
       }
 
-      // Only allow images
       if (!photo.type.startsWith('image/')) {
         return NextResponse.json(
           {
@@ -160,89 +122,59 @@ export async function POST(request: Request) {
         );
       }
 
-      // Get file extension
-      const originalName = photo.name || '';
       const extension =
-        originalName.split('.').pop()?.toLowerCase() || 'jpg';
+        photo.name.split('.').pop()?.toLowerCase() || 'jpg';
 
-      // Create a unique filename
-      const fileName = `${crypto.randomUUID()}.${extension}`;
-
-      uploadedPhotoPath = `testimonials/${fileName}`;
+      const filePath =
+        `testimonials/${crypto.randomUUID()}.${extension}`;
 
       const { error: uploadError } = await admin.storage
         .from(PHOTO_BUCKET)
-        .upload(
-          uploadedPhotoPath,
-          photo,
-          {
-            contentType: photo.type,
-            upsert: false,
-          }
-        );
+        .upload(filePath, photo, {
+          contentType: photo.type,
+          upsert: false,
+        });
 
       if (uploadError) {
-        console.error('TESTIMONIAL PHOTO UPLOAD ERROR:', {
-          message: uploadError.message,
-          name: uploadError.name,
-        });
+        console.error('PHOTO UPLOAD ERROR:', uploadError);
 
         return NextResponse.json(
           {
-            error:
-              uploadError.message ||
-              'Could not upload student photo.',
+            error: `Photo upload failed: ${uploadError.message}`,
+            details: uploadError,
           },
           { status: 500 }
         );
       }
 
-      // Get public URL
       const { data: publicUrlData } = admin.storage
         .from(PHOTO_BUCKET)
-        .getPublicUrl(uploadedPhotoPath);
+        .getPublicUrl(filePath);
 
       photoUrl = publicUrlData.publicUrl;
     }
 
-    // Save testimonial
-    const testimonialData = {
-      student_name: parsed.data.student_name,
-      exam_type: parsed.data.exam_type,
-      score: parsed.data.score,
-      year: parsed.data.year,
-      message: parsed.data.message,
-      photo_url: photoUrl,
-      is_published: parsed.data.is_published,
-    };
-
     const { data, error } = await admin
       .schema('public')
       .from('testimonials')
-      .insert(testimonialData)
+      .insert({
+        student_name: parsed.data.student_name,
+        exam_type: parsed.data.exam_type,
+        score: parsed.data.score,
+        year: parsed.data.year,
+        message: parsed.data.message,
+        is_published: parsed.data.is_published,
+        photo_url: photoUrl,
+      })
       .select('*')
       .single();
 
     if (error) {
-      console.error('TESTIMONIAL INSERT ERROR:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
-
-      // Remove uploaded photo if database insert failed
-      if (uploadedPhotoPath) {
-        await admin.storage
-          .from(PHOTO_BUCKET)
-          .remove([uploadedPhotoPath]);
-      }
+      console.error('TESTIMONIAL INSERT ERROR:', error);
 
       return NextResponse.json(
         {
-          error:
-            error.message ||
-            'Could not save testimonial.',
+          error: `Testimonial database save failed: ${error.message}`,
           code: error.code,
           details: error.details,
           hint: error.hint,
@@ -253,6 +185,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
+        success: true,
         testimonial: data,
       },
       { status: 201 }
@@ -260,26 +193,12 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('TESTIMONIAL POST EXCEPTION:', error);
 
-    // Clean up photo if something unexpected happened
-    if (uploadedPhotoPath) {
-      try {
-        const admin = createAdminClient();
-
-        await admin.storage
-          .from(PHOTO_BUCKET)
-          .remove([uploadedPhotoPath]);
-      } catch (cleanupError) {
-        console.error(
-          'TESTIMONIAL PHOTO CLEANUP ERROR:',
-          cleanupError
-        );
-      }
-    }
-
     return NextResponse.json(
       {
         error:
-          'Something went wrong while saving the testimonial.',
+          error instanceof Error
+            ? error.message
+            : 'Unknown server error.',
       },
       { status: 500 }
     );
