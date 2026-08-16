@@ -25,18 +25,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
 
-  // REAL DATE
-  // The website now uses the actual current date.
-  //
-  // August 14, 2026 → September 16, 2026:
-  // Product Key request is available.
-  //
-  // September 17, 2026 → September 30, 2026:
-  // Both Product Key and Activation Key requests are available.
-  //
-  // October 1, 2026 onward:
-  // Only Activation Key request is available.
-
   const now = new Date();
 
   const activationRequestStart = new Date(
@@ -74,7 +62,9 @@ export default function RegisterPage() {
     );
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: React.FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
     setServerError('');
 
@@ -94,20 +84,23 @@ export default function RegisterPage() {
     setErrors({});
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: parsed.data.email,
-      password: parsed.data.password,
-      options: {
-        data: {
-          full_name: parsed.data.full_name,
-          phone: parsed.data.phone ?? null,
-          exam_target: parsed.data.exam_target ?? null,
-          pending_access_key: parsed.data.access_key.trim(),
-        },
+    const { data, error } =
+      await supabase.auth.signUp({
+        email: parsed.data.email,
+        password: parsed.data.password,
+        options: {
+          data: {
+            full_name: parsed.data.full_name,
+            phone: parsed.data.phone ?? null,
+            exam_target: parsed.data.exam_target ?? null,
+            pending_access_key:
+              parsed.data.access_key.trim(),
+          },
 
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-      },
-    });
+          emailRedirectTo:
+            `${window.location.origin}/dashboard`,
+        },
+      });
 
     if (error) {
       setLoading(false);
@@ -128,12 +121,14 @@ export default function RegisterPage() {
       return;
     }
 
-    const { error: claimError } = await supabase.rpc(
-      'claim_access_key',
-      {
-        p_key_code: parsed.data.access_key.trim(),
-      }
-    );
+    const { error: claimError } =
+      await supabase.rpc(
+        'claim_access_key',
+        {
+          p_key_code:
+            parsed.data.access_key.trim(),
+        }
+      );
 
     if (claimError) {
       await supabase.auth.signOut();
@@ -147,11 +142,12 @@ export default function RegisterPage() {
       return;
     }
 
-    const { error: metadataError } = await supabase.auth.updateUser({
-      data: {
-        pending_access_key: null,
-      },
-    });
+    const { error: metadataError } =
+      await supabase.auth.updateUser({
+        data: {
+          pending_access_key: null,
+        },
+      });
 
     if (metadataError) {
       console.error(
@@ -166,159 +162,228 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-      <h1 className="mb-1 text-2xl font-bold text-slate-900">
-        Create your account
-      </h1>
+    <main className="min-h-screen bg-white px-5 py-10 text-slate-900">
+      <div className="mx-auto flex min-h-[90vh] max-w-md flex-col justify-center">
 
-      <p className="mb-6 text-slate-500">
-        Start prepping for JAMB & WAEC today.
-      </p>
-
-      {serverError && (
-        <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-          {serverError}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} noValidate>
-        <FormField
-          label="Full name"
-          name="full_name"
-          value={form.full_name}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              full_name: e.target.value,
-            })
-          }
-          error={errors.full_name}
-        />
-
-        <FormField
-          label="Email"
-          name="email"
-          type="email"
-          value={form.email}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              email: e.target.value,
-            })
-          }
-          error={errors.email}
-        />
-
-        <FormField
-          label="Phone number"
-          name="phone"
-          type="tel"
-          value={form.phone}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              phone: e.target.value,
-            })
-          }
-          error={errors.phone}
-        />
-
-        <div className="mb-4">
-          <label className="mb-1.5 block text-sm font-medium text-slate-700">
-            What are you preparing for?
-          </label>
-
-          <select
-            value={form.exam_target}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                exam_target: e.target.value,
-              })
-            }
-            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+        {/* LOGO */}
+        <div className="mb-8 text-center">
+          <Link
+            href="/"
+            className="inline-flex flex-col items-center"
           >
-            <option value="jamb">JAMB / UTME</option>
-            <option value="waec">WAEC</option>
-            <option value="both">Both</option>
-          </select>
+            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-slate-100">
+              <img
+                src="/pinnacle-logo.png"
+                alt="Pinnacle Tutors Academy"
+                className="h-full w-full object-contain"
+              />
+            </div>
+
+            <h1 className="mt-4 text-2xl font-black text-slate-900">
+              Pinnacle Tutors
+            </h1>
+
+            <p className="mt-1 text-sm font-semibold text-orange-600">
+              Academy
+            </p>
+          </Link>
         </div>
 
-        <FormField
-          label="Password"
-          name="password"
-          type="password"
-          value={form.password}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              password: e.target.value,
-            })
-          }
-          error={errors.password}
-        />
+        {/* REGISTER CARD */}
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl sm:p-8">
 
-        <div className="mb-4">
-          <FormField
-            label="Product Key / Activation Key"
-            name="access_key"
-            value={form.access_key}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                access_key: e.target.value,
-              })
-            }
-            error={errors.access_key}
-          />
+          <div className="mb-6">
+            <h2 className="text-2xl font-black text-slate-900">
+              Create your account 🚀
+            </h2>
 
-          <div className="mt-3 space-y-2">
-            {showProductKeyRequest && (
-              <button
-                type="button"
-                onClick={requestProductKey}
-                className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"
-              >
-                🔑 Request Product Key
-              </button>
-            )}
-
-            {showActivationKeyRequest && (
-              <button
-                type="button"
-                onClick={requestActivationKey}
-                className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-black text-amber-700 transition hover:bg-amber-100"
-              >
-                🔐 Request Activation Key
-              </button>
-            )}
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Start preparing smarter for JAMB and WAEC
+              with Pinnacle Tutors Academy.
+            </p>
           </div>
 
-          <p className="mt-2 text-xs leading-5 text-slate-400">
-            Enter the Product Key or Activation Key you received from
-            Pinnacle Tutors Academy.
+          {serverError && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              {serverError}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} noValidate>
+
+            <FormField
+              label="Full name"
+              name="full_name"
+              value={form.full_name}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  full_name: e.target.value,
+                })
+              }
+              error={errors.full_name}
+            />
+
+            <FormField
+              label="Email"
+              name="email"
+              type="email"
+              value={form.email}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  email: e.target.value,
+                })
+              }
+              error={errors.email}
+            />
+
+            <FormField
+              label="Phone number"
+              name="phone"
+              type="tel"
+              value={form.phone}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  phone: e.target.value,
+                })
+              }
+              error={errors.phone}
+            />
+
+            {/* EXAM TARGET */}
+            <div className="mb-4">
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                What are you preparing for?
+              </label>
+
+              <select
+                value={form.exam_target}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    exam_target: e.target.value,
+                  })
+                }
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/30"
+              >
+                <option value="jamb">
+                  JAMB / UTME
+                </option>
+
+                <option value="waec">
+                  WAEC
+                </option>
+
+                <option value="both">
+                  Both
+                </option>
+              </select>
+            </div>
+
+            <FormField
+              label="Password"
+              name="password"
+              type="password"
+              value={form.password}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  password: e.target.value,
+                })
+              }
+              error={errors.password}
+            />
+
+            {/* ACCESS KEY */}
+            <div className="mb-4">
+              <FormField
+                label="Product Key / Activation Key"
+                name="access_key"
+                value={form.access_key}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    access_key: e.target.value,
+                  })
+                }
+                error={errors.access_key}
+              />
+
+              <div className="mt-3 space-y-2">
+
+                {showProductKeyRequest && (
+                  <button
+                    type="button"
+                    onClick={requestProductKey}
+                    className="w-full rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700 transition hover:bg-orange-100"
+                  >
+                    🔑 Request Product Key
+                  </button>
+                )}
+
+                {showActivationKeyRequest && (
+                  <button
+                    type="button"
+                    onClick={requestActivationKey}
+                    className="w-full rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700 transition hover:bg-orange-100"
+                  >
+                    🔐 Request Activation Key
+                  </button>
+                )}
+
+              </div>
+
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                Enter the Product Key or Activation Key
+                you received from Pinnacle Tutors Academy.
+              </p>
+            </div>
+
+            {/* CREATE ACCOUNT BUTTON */}
+            <div className="[&_button]:!bg-orange-600 [&_button:hover]:!bg-orange-700">
+              <Button
+                type="submit"
+                fullWidth
+                loading={loading}
+                className="mt-2"
+              >
+                Create account
+              </Button>
+            </div>
+
+          </form>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-slate-200" />
+
+            <span className="text-xs font-semibold text-slate-400">
+              OR
+            </span>
+
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          <p className="text-center text-sm text-slate-500">
+            Already have an account?{' '}
+
+            <Link
+              href="/login"
+              className="font-black text-orange-600 hover:text-orange-700"
+            >
+              Log in
+            </Link>
           </p>
-        </div>
 
-        <Button
-          type="submit"
-          fullWidth
-          loading={loading}
-          className="mt-2"
-        >
-          Create account
-        </Button>
-      </form>
+        </section>
 
-      <p className="mt-6 text-center text-sm text-slate-500">
-        Already have an account?{' '}
-        <Link
-          href="/login"
-          className="font-semibold text-emerald-700"
-        >
-          Log in
-        </Link>
-      </p>
-    </div>
+        {/* FOOTER */}
+        <p className="mt-6 text-center text-xs font-medium text-slate-400">
+          © {new Date().getFullYear()} Pinnacle Tutors Academy
+        </p>
+
+      </div>
+    </main>
   );
 }
