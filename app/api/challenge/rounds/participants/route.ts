@@ -46,7 +46,11 @@ export async function GET(request: Request) {
       score,
       whatsapp_number,
       reward_given,
-      reward_given_at
+      reward_given_at,
+      profiles:student_id (
+        id,
+        full_name
+      )
     `)
     .eq('round_id', roundId)
     .order('score', { ascending: false })
@@ -85,6 +89,8 @@ export async function GET(request: Request) {
     return {
       ...participant,
       rank,
+      student_name:
+        participant.profiles?.full_name || 'Unknown student',
     };
   });
 
