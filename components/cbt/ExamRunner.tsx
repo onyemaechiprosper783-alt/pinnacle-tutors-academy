@@ -20,6 +20,41 @@ interface Feedback {
   explanation: string | null;
 }
 
+const ENGLISH_SUBJECT_ID =
+  'e5705892-de46-425c-af42-e37a3eddc93d';
+
+const LEKKI_HEADMASTER_SUBJECT_ID =
+  '3bca9d00-18fd-4064-b3ac-41da6e7eefa6';
+
+const CBT_SECTIONS = [
+  {
+    key: 'english',
+    name: 'English',
+    count: 60,
+  },
+  {
+    key: 'biology',
+    name: 'Biology',
+    count: 40,
+  },
+  {
+    key: 'chemistry',
+    name: 'Chemistry',
+    count: 40,
+  },
+  {
+    key: 'physics',
+    name: 'Physics',
+    count: 40,
+  },
+] as const;
+
+type CbtSectionKey = (typeof CBT_SECTIONS)[number]['key'];
+
+type QuestionWithSubject = QuestionPublic & {
+  subject_id?: string;
+};
+
 export function ExamRunner({
   attemptId,
   mode,
@@ -38,8 +73,148 @@ export function ExamRunner({
   const [showCalculator, setShowCalculator] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const currentQuestion = questions[currentIndex];
+  const [activeSection, setActiveSection] =
+    useState<CbtSectionKey>('english');
+
+  /*
+   * ----------------------------------------------------
+   * CBT SECTION ORGANIZATION
+   * ----------------------------------------------------
+   *
+   * English = normal English + Lekki Headmaster
+   * Biology = Biology
+   * Chemistry = Chemistry
+   * Physics = Physics
+   *
+   * There is NO question-number grid.
+   */
+
+  const cbtQuestions = useMemo(() => {
+    if (mode !== 'cbt') return null;
+
+    const typedQuestions =
+      questions as QuestionWithSubject[];
+
+    const english = typedQuestions.filter(
+      (q) =>
+        q.subject_id === ENGLISH_SUBJECT_ID ||
+        q.subject_id === LEKKI_HEADMASTER_SUBJECT_ID
+    );
+
+    const biology = typedQuestions.filter((q) =>
+      q.subject_id
+        ? q.subject_id !== ENGLISH_SUBJECT_ID &&
+          q.subject_id !== LEKKI_HEADMASTER_SUBJECT_ID &&
+          q.subject_id ===
+            typedQuestions.find(
+              (x) =>
+                x.subject_id === q.subject_id &&
+                x.subject_id !== ENGLISH_SUBJECT_ID &&
+                x.subject_id !== LEKKI_HEADMASTER_SUBJECT_ID
+            )?.subject_id
+        : false
+    );
+
+    /*
+     * We identify the remaining subjects by their names.
+     * This makes the CBT work even though the student's
+     * selected subject IDs are not hard-coded here.
+     */
+    const getSubjectName = (q: QuestionWithSubject) => {
+      const value = q as QuestionWithSubject & {
+        subject_name?: string;
+        subject?: string;
+      };
+
+      return (
+        value.subject_name ??
+        value.subject ??
+        ''
+      )
+        .toString()
+        .toLowerCase();
+    };
+
+    const biologyQuestions = typedQuestions.filter((q) => {
+      const name = getSubjectName(q);
+      return (
+        name.includes('biology') &&
+        q.subject_id !== ENGLISH_SUBJECT_ID &&
+        q.subject_id !== LEKKI_HEADMASTER_SUBJECT_ID
+      );
+    });
+
+    const chemistryQuestions = typedQuestions.filter((q) => {
+      const name = getSubjectName(q);
+      return (
+        name.includes('chemistry') &&
+        q.subject_id !== ENGLISH_SUBJECT_ID &&
+        q.subject_id !== LEKKI_HEADMASTER_SUBJECT_ID
+      );
+    });
+
+    const physicsQuestions = typedQuestions.filter((q) => {
+      const name = getSubjectName(q);
+      return (
+        name.includes('physics') &&
+        q.subject_id !== ENGLISH_SUBJECT_ID &&
+        q.subject_id !== LEKKI_HEADMASTER_SUBJECT_ID
+      );
+    });
+
+    /*
+     * Fallback:
+     *
+     * If the public question object does not expose
+     * subject names, use the expected CBT order.
+     *
+     * Backend selection already returns:
+     *
+     * English 50
+     * Lekki 10
+     * Subject 1 40
+     * Subject 2 40
+     * Subject 3 40
+     */
+    if (
+      biologyQuestions.length === 0 &&
+      chemistryQuestions.length === 0 &&
+      physicsQuestions.length === 0
+    ) {
+      return {
+        english: typedQuestions.slice(0, 60),
+        biology: typedQuestions.slice(60, 100),
+        chemistry: typedQuestions.slice(100, 140),
+        physics: typedQuestions.slice(140, 180),
+      };
+    }
+
+    return {
+      english,
+      biology: biologyQuestions,
+      chemistry: chemistryQuestions,
+      physics: physicsQuestions,
+    };
+  }, [questions, mode]);
+
+  const sectionQuestions: QuestionPublic[] =
+    mode === 'cbt' && cbtQuestions
+      ? cbtQuestions[activeSection]
+      : questions;
+
+  const safeCurrentIndex = Math.min(
+    currentIndex,
+    Math.max(sectionQuestions.length - 1, 0)
+  );
+
+  const currentQuestion =
+    sectionQuestions[safeCurrentIndex];
+
   const answeredCount = Object.keys(answers).length;
+
+  const answeredInCurrentSection = sectionQuestions.filter(
+    (q) => !!answers[q.id]
+  ).length;
 
   const handleSubmit = useCallback(
     async (autoSubmitted = false) => {
@@ -48,15 +223,18 @@ export function ExamRunner({
       setSubmitting(true);
 
       try {
-        const res = await fetch(`/api/exams/${attemptId}/submit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            auto_submitted: autoSubmitted,
-          }),
-        });
+        const res = await fetch(
+          `/api/exams/${attemptId}/submit`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              auto_submitted: autoSubmitted,
+            }),
+          }
+        );
 
         if (!res.ok) {
           throw new Error('Could not submit exam.');
@@ -71,12 +249,20 @@ export function ExamRunner({
     [attemptId, router, submitting]
   );
 
-  const timer = useExamTimer(durationSeconds, () => handleSubmit(true));
+  const timer = useExamTimer(
+    durationSeconds,
+    () => handleSubmit(true)
+  );
 
-  async function selectAnswer(letter: 'A' | 'B' | 'C' | 'D') {
+  async function selectAnswer(
+    letter: 'A' | 'B' | 'C' | 'D'
+  ) {
     if (!currentQuestion || answerLoading) return;
 
-    if (mode === 'practice' && feedback[currentQuestion.id]) {
+    if (
+      mode === 'practice' &&
+      feedback[currentQuestion.id]
+    ) {
       return;
     }
 
@@ -105,16 +291,22 @@ export function ExamRunner({
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error ?? 'Could not save answer.');
+        throw new Error(
+          data.error ?? 'Could not save answer.'
+        );
       }
 
-      if (mode === 'practice' && data.correct_answer) {
+      if (
+        mode === 'practice' &&
+        data.correct_answer
+      ) {
         setFeedback((prev) => ({
           ...prev,
           [currentQuestion.id]: {
             is_correct: Boolean(data.is_correct),
             correct_answer: data.correct_answer,
-            explanation: data.explanation ?? null,
+            explanation:
+              data.explanation ?? null,
           },
         }));
       }
@@ -125,232 +317,278 @@ export function ExamRunner({
     }
   }
 
+  function goNext() {
+    if (
+      safeCurrentIndex <
+      sectionQuestions.length - 1
+    ) {
+      setCurrentIndex((i) => i + 1);
+    }
+  }
+
+  function goPrevious() {
+    if (safeCurrentIndex > 0) {
+      setCurrentIndex((i) => i - 1);
+    }
+  }
+
+  function changeSection(section: CbtSectionKey) {
+    setActiveSection(section);
+    setCurrentIndex(0);
+  }
+
   const currentFeedback = currentQuestion
     ? feedback[currentQuestion.id]
     : undefined;
 
-  const isMathOrScience = useMemo(() => true, []);
+  const isLastQuestion =
+    safeCurrentIndex ===
+    sectionQuestions.length - 1;
 
   if (!currentQuestion) {
     return (
-      <p className="p-8 text-center text-slate-400">
-        No questions loaded.
-      </p>
+      <div className="mx-auto max-w-xl p-6">
+        <div className="rounded-2xl bg-amber-50 p-6 text-center text-amber-800">
+          No questions loaded for this section.
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-3xl pb-4">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-500">
-          Question {currentIndex + 1} of {questions.length}
-        </span>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
 
-        {durationSeconds ? (
-          <span
-            className={`rounded-full px-3 py-1 text-sm font-bold ${
-              timer.isLow
-                ? 'bg-red-100 text-red-700'
-                : 'bg-emerald-100 text-emerald-700'
-            }`}
-          >
-            ⏱ {timer.display}
-          </span>
-        ) : (
-          <span className="text-sm text-slate-400">
-            Untimed
-          </span>
-        )}
-      </div>
+        {/* TOP BAR */}
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-slate-300">
+            JAMB CBT
+          </div>
 
-      {/* Question navigation */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {questions.map((q, i) => {
-          const isAnswered = !!answers[q.id];
-          const isCurrent = i === currentIndex;
-
-          return (
-            <button
-              key={q.id}
-              type="button"
-              onClick={() => setCurrentIndex(i)}
-              className={`h-8 w-8 shrink-0 rounded-md text-xs font-semibold ${
-                isCurrent
-                  ? 'bg-emerald-600 text-white'
-                  : isAnswered
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-slate-100 text-slate-500'
+          {durationSeconds ? (
+            <div
+              className={`rounded-full px-4 py-2 text-sm font-bold ${
+                timer.isLow
+                  ? 'bg-red-600 text-white'
+                  : 'bg-emerald-600 text-white'
               }`}
             >
-              {i + 1}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Question card */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="mb-5 text-lg font-medium leading-relaxed text-slate-900">
-          {currentQuestion.question_text}
-        </p>
-
-        <div className="space-y-2.5">
-          {(['A', 'B', 'C', 'D'] as const).map((letter) => {
-            const optionText =
-              currentQuestion[
-                `option_${letter.toLowerCase()}` as 'option_a'
-              ];
-
-            const isSelected =
-              answers[currentQuestion.id] === letter;
-
-            const showResult =
-              mode === 'practice' && !!currentFeedback;
-
-            const isCorrectOption =
-              showResult &&
-              currentFeedback.correct_answer === letter;
-
-            const isWrongSelected =
-              showResult &&
-              isSelected &&
-              !currentFeedback.is_correct;
-
-            return (
-              <button
-                key={letter}
-                type="button"
-                onClick={() => selectAnswer(letter)}
-                disabled={
-                  answerLoading ||
-                  (mode === 'practice' && !!currentFeedback)
-                }
-                className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left text-base transition-colors ${
-                  isCorrectOption
-                    ? 'border-emerald-500 bg-emerald-50'
-                    : isWrongSelected
-                      ? 'border-red-400 bg-red-50'
-                      : isSelected
-                        ? 'border-emerald-500 bg-emerald-50'
-                        : 'border-slate-200 bg-white active:bg-slate-50'
-                }`}
-              >
-                <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                    isSelected || isCorrectOption
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-slate-100 text-slate-500'
-                  }`}
-                >
-                  {letter}
-                </span>
-
-                <span>{optionText}</span>
-              </button>
-            );
-          })}
+              ⏱ {timer.display}
+            </div>
+          ) : (
+            <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
+              Untimed
+            </div>
+          )}
         </div>
 
-        {/* Practice feedback */}
-        {mode === 'practice' && currentFeedback && (
-          <div
-            className={`mt-5 rounded-xl p-4 ${
-              currentFeedback.is_correct
-                ? 'bg-emerald-50 text-emerald-800'
-                : 'bg-red-50 text-red-800'
-            }`}
-          >
-            <p className="text-base font-bold">
-              {currentFeedback.is_correct
-                ? '✓ Correct!'
-                : `✗ Incorrect — the correct answer is ${currentFeedback.correct_answer}`}
-            </p>
+        {/* SUBJECT TABS */}
+        {mode === 'cbt' && (
+          <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-700">
+            {CBT_SECTIONS.map((section) => {
+              const active =
+                activeSection === section.key;
 
-            {!currentFeedback.is_correct && (
-              <p className="mt-2 text-sm font-medium">
-                Correct answer: {currentFeedback.correct_answer}
-              </p>
-            )}
-
-            {currentFeedback.explanation && (
-              <div className="mt-3 rounded-lg bg-white/70 p-3 text-sm text-slate-700">
-                <p className="font-semibold">Explanation</p>
-                <p className="mt-1">
-                  {currentFeedback.explanation}
-                </p>
-              </div>
-            )}
+              return (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() =>
+                    changeSection(section.key)
+                  }
+                  className={`whitespace-nowrap px-4 py-3 text-sm font-semibold transition ${
+                    active
+                      ? 'border-b-4 border-emerald-500 text-emerald-400'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {section.name}
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {answerLoading && (
-          <p className="mt-3 text-center text-sm text-slate-400">
-            Checking answer...
-          </p>
-        )}
-      </div>
-
-      {/* Question navigation buttons */}
-      <div className="mt-4 flex items-center justify-between gap-3 pb-24">
-        <Button
-          variant="secondary"
-          disabled={currentIndex === 0}
-          onClick={() =>
-            setCurrentIndex((i) => Math.max(0, i - 1))
-          }
-        >
-          Previous
-        </Button>
-
-        <Button
-          variant="ghost"
-          onClick={() =>
-            setShowCalculator((s) => !s)
-          }
-        >
-          {showCalculator ? 'Hide' : 'Calculator'}
-        </Button>
-
-        {currentIndex < questions.length - 1 ? (
-          <Button
-            onClick={() =>
-              setCurrentIndex((i) =>
-                Math.min(questions.length - 1, i + 1)
-              )
-            }
-          >
-            Next
-          </Button>
-        ) : (
-          <Button
-            onClick={() => setShowConfirm(true)}
-          >
-            Submit
-          </Button>
-        )}
-      </div>
-
-      {/* MOBILE + DESKTOP SUBMIT BAR */}
-      <div className="fixed inset-x-0 bottom-0 z-[100] border-t border-slate-200 bg-white px-3 py-3 shadow-[0_-4px_15px_rgba(0,0,0,0.12)]">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
-          <span className="text-xs font-medium text-slate-500 sm:text-sm">
-            {answeredCount} of {questions.length} answered
-          </span>
+        {/* QUESTION HEADER */}
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="rounded-full border-2 border-slate-500 px-6 py-3">
+            <span className="font-bold">
+              Question {safeCurrentIndex + 1}/
+              {sectionQuestions.length}
+            </span>
+          </div>
 
           <button
             type="button"
-            onClick={() => setShowConfirm(true)}
-            className="min-h-[50px] touch-manipulation rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white shadow-md active:scale-95"
+            onClick={() =>
+              setShowCalculator((s) => !s)
+            }
+            className="rounded-full border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
           >
-            End & Submit
+            🧮 Calculator
           </button>
+        </div>
+
+        {/* QUESTION CARD */}
+        <div className="rounded-2xl bg-slate-900 p-5 sm:p-7">
+
+          <p className="mb-7 text-lg font-medium leading-relaxed text-white sm:text-xl">
+            {currentQuestion.question_text}
+          </p>
+
+          <div className="space-y-4">
+            {(['A', 'B', 'C', 'D'] as const).map(
+              (letter) => {
+                const optionText =
+                  currentQuestion[
+                    `option_${letter.toLowerCase()}` as
+                      | 'option_a'
+                      | 'option_b'
+                      | 'option_c'
+                      | 'option_d'
+                  ];
+
+                const isSelected =
+                  answers[currentQuestion.id] ===
+                  letter;
+
+                const showResult =
+                  mode === 'practice' &&
+                  !!currentFeedback;
+
+                const isCorrectOption =
+                  showResult &&
+                  currentFeedback.correct_answer ===
+                    letter;
+
+                const isWrongSelected =
+                  showResult &&
+                  isSelected &&
+                  !currentFeedback.is_correct;
+
+                return (
+                  <button
+                    key={letter}
+                    type="button"
+                    onClick={() =>
+                      selectAnswer(letter)
+                    }
+                    disabled={
+                      answerLoading ||
+                      (mode === 'practice' &&
+                        !!currentFeedback)
+                    }
+                    className={`flex w-full items-start gap-4 rounded-xl border-2 p-4 text-left transition ${
+                      isCorrectOption
+                        ? 'border-emerald-500 bg-emerald-900/30'
+                        : isWrongSelected
+                          ? 'border-red-500 bg-red-900/30'
+                          : isSelected
+                            ? 'border-emerald-500 bg-emerald-900/20'
+                            : 'border-slate-700 bg-slate-900 hover:border-slate-500'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-slate-500 text-slate-300'
+                      }`}
+                    >
+                      {letter}
+                    </span>
+
+                    <span className="pt-1 text-base leading-relaxed text-slate-100">
+                      {optionText}
+                    </span>
+                  </button>
+                );
+              }
+            )}
+          </div>
+
+          {/* PRACTICE FEEDBACK ONLY */}
+          {mode === 'practice' &&
+            currentFeedback && (
+              <div
+                className={`mt-6 rounded-xl p-4 ${
+                  currentFeedback.is_correct
+                    ? 'bg-emerald-900/40 text-emerald-200'
+                    : 'bg-red-900/40 text-red-200'
+                }`}
+              >
+                <p className="font-bold">
+                  {currentFeedback.is_correct
+                    ? '✓ Correct!'
+                    : `✗ Incorrect — correct answer: ${currentFeedback.correct_answer}`}
+                </p>
+
+                {currentFeedback.explanation && (
+                  <div className="mt-3 rounded-lg bg-slate-950/50 p-3 text-sm">
+                    <p className="font-semibold">
+                      Explanation
+                    </p>
+                    <p className="mt-1">
+                      {currentFeedback.explanation}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+          {answerLoading && (
+            <p className="mt-4 text-center text-sm text-slate-400">
+              Saving answer...
+            </p>
+          )}
+        </div>
+
+        {/* BOTTOM NAVIGATION */}
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={goPrevious}
+            disabled={safeCurrentIndex === 0}
+            className="rounded-full border-2 border-slate-600 px-5 py-3 font-semibold text-slate-300 disabled:opacity-30"
+          >
+            ← Previous
+          </button>
+
+          <div className="text-sm text-slate-400">
+            {answeredInCurrentSection}/
+            {sectionQuestions.length}
+          </div>
+
+          {!isLastQuestion ? (
+            <button
+              type="button"
+              onClick={goNext}
+              className="rounded-full bg-emerald-600 px-7 py-3 font-bold text-white hover:bg-emerald-500"
+            >
+              Next →
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() =>
+                setShowConfirm(true)
+              }
+              className="rounded-full bg-orange-500 px-7 py-3 font-bold text-white hover:bg-orange-400"
+            >
+              ✓ Submit
+            </button>
+          )}
+        </div>
+
+        {/* OVERALL PROGRESS */}
+        <div className="mt-5 text-center text-xs text-slate-500">
+          {answeredCount} of {questions.length} answered
         </div>
       </div>
 
-      {/* Calculator */}
+      {/* CALCULATOR */}
       {showCalculator && (
-        <div className="fixed bottom-20 right-4 z-[110]">
+        <div className="fixed bottom-5 right-4 z-[110]">
           <Calculator
             onClose={() =>
               setShowCalculator(false)
@@ -359,25 +597,28 @@ export function ExamRunner({
         </div>
       )}
 
-      {/* Confirmation modal */}
+      {/* SUBMIT CONFIRMATION */}
       {showConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="mb-2 text-lg font-bold text-slate-900">
-              Submit your exam?
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
+            <h3 className="text-xl font-bold">
+              Submit your CBT?
             </h3>
 
-            <p className="mb-5 text-sm text-slate-500">
-              You&apos;ve answered {answeredCount} of{' '}
+            <p className="mt-3 text-sm text-slate-500">
+              You have answered {answeredCount} of{' '}
               {questions.length} questions.
-
-              {answeredCount < questions.length &&
-                ' Unanswered questions will be marked incorrect.'}
-
-              {' '}This can&apos;t be undone.
             </p>
 
-            <div className="flex gap-3">
+            {answeredCount <
+              questions.length && (
+              <p className="mt-2 text-sm font-medium text-amber-700">
+                Unanswered questions will be marked
+                incorrect.
+              </p>
+            )}
+
+            <div className="mt-6 flex gap-3">
               <Button
                 variant="secondary"
                 fullWidth
@@ -385,7 +626,7 @@ export function ExamRunner({
                   setShowConfirm(false)
                 }
               >
-                Keep working
+                Continue
               </Button>
 
               <Button
