@@ -9,13 +9,9 @@ interface Subject {
   name: string;
 }
 
-const ENGLISH_SUBJECT_ID =
-  'e5705892-de46-425c-af42-e37a3eddc93d';
-
-const LEKKI_HEADMASTER_SUBJECT_ID =
-  '3bca9d00-18fd-4064-b3ac-41da6e7eefa6';
-
 const OTHER_SUBJECT_COUNT = 3;
+const CBT_QUESTION_COUNT = 180;
+const CBT_DURATION_SECONDS = 120 * 60;
 
 export default function CbtSetupPage() {
   const router = useRouter();
@@ -54,15 +50,10 @@ export default function CbtSetupPage() {
   }, []);
 
   const availableSubjects = useMemo(() => {
-    return subjects.filter((subject) => {
-      const name = subject.name.toLowerCase();
-
-      return (
-        subject.id !== ENGLISH_SUBJECT_ID &&
-        subject.id !== LEKKI_HEADMASTER_SUBJECT_ID &&
-        !name.includes('english')
-      );
-    });
+    return subjects.filter(
+      (subject) =>
+        !subject.name.toLowerCase().includes('english')
+    );
   }, [subjects]);
 
   function toggleSubject(id: string) {
@@ -70,16 +61,13 @@ export default function CbtSetupPage() {
 
     setSelectedSubjects((current) => {
       if (current.includes(id)) {
-        return current.filter(
-          (subjectId) => subjectId !== id
-        );
+        return current.filter((subjectId) => subjectId !== id);
       }
 
       if (current.length >= OTHER_SUBJECT_COUNT) {
         setError(
           'You can select only 3 additional subjects.'
         );
-
         return current;
       }
 
@@ -89,10 +77,7 @@ export default function CbtSetupPage() {
 
   function continueSetup() {
     if (selectedSubjects.length !== 3) {
-      setError(
-        'Please select exactly 3 additional subjects.'
-      );
-
+      setError('Please select exactly 3 additional subjects.');
       return;
     }
 
@@ -102,10 +87,7 @@ export default function CbtSetupPage() {
 
   async function handleStart() {
     if (selectedSubjects.length !== 3) {
-      setError(
-        'Please select exactly 3 additional subjects.'
-      );
-
+      setError('Please select exactly 3 additional subjects.');
       return;
     }
 
@@ -114,17 +96,17 @@ export default function CbtSetupPage() {
 
     try {
       /*
-       * JAMB CBT structure:
+       * English is automatically included.
        *
-       * English Language       = 50
-       * Lekki Headmaster       = 10
-       * Each selected subject  = 40
+       * English:
+       * 50 normal English questions
+       * 10 Lekki Headmaster questions
        *
-       * 50 + 10 + 40 + 40 + 40 = 180
+       * Three selected subjects:
+       * 40 questions each
        *
-       * English is displayed as 60 in the UI because
-       * its section contains 50 English + 10 Lekki
-       * Headmaster questions.
+       * TOTAL = 180 QUESTIONS
+       * TIME = 120 MINUTES
        */
       const res = await fetch('/api/exams/start', {
         method: 'POST',
@@ -134,31 +116,16 @@ export default function CbtSetupPage() {
         body: JSON.stringify({
           mode: 'cbt',
 
-          /*
-           * The backend receives the 3 student-selected
-           * subjects here. English and Lekki Headmaster
-           * are automatically added by the backend.
-           */
           subject_ids: selectedSubjects,
 
-          question_count: 180,
+          question_count: CBT_QUESTION_COUNT,
 
-          duration_seconds: 180 * 60,
+          duration_seconds: CBT_DURATION_SECONDS,
 
           cbt_config: {
-            /*
-             * IMPORTANT:
-             * This is 50, NOT 60.
-             *
-             * The 10 Lekki Headmaster questions are
-             * configured separately below.
-             */
             english_question_count: 50,
-
             lekki_headmaster_count: 10,
-
             other_subject_question_count: 40,
-
             other_subject_ids: selectedSubjects,
           },
         }),
@@ -169,12 +136,6 @@ export default function CbtSetupPage() {
       if (!res.ok) {
         throw new Error(
           data.error ?? 'Could not start CBT exam.'
-        );
-      }
-
-      if (!data.attempt_id) {
-        throw new Error(
-          'CBT started but no exam attempt was created.'
         );
       }
 
@@ -349,12 +310,18 @@ export default function CbtSetupPage() {
                 <span>Subject 3: 40</span>
                 <span>Subject 4: 40</span>
               </div>
+
+              <div className="mt-3 border-t border-slate-700 pt-3">
+                <span className="text-xs text-slate-300">
+                  Time: 2 hours
+                </span>
+              </div>
             </div>
 
             <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-5 text-amber-800">
               <strong>Important:</strong> This is a
-              timed CBT. Your answers are saved as you
-              progress, and the exam will automatically
+              2-hour timed CBT. Your answers are saved as
+              you progress, and the exam will automatically
               submit when the time expires.
             </div>
 
@@ -436,7 +403,7 @@ export default function CbtSetupPage() {
           <div className="mb-6 rounded-2xl bg-emerald-50 p-5">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-emerald-800">
-                Total
+                Total Questions
               </span>
 
               <span className="text-2xl font-bold text-emerald-800">
@@ -444,7 +411,17 @@ export default function CbtSetupPage() {
               </span>
             </div>
 
-            <p className="mt-2 text-xs text-emerald-700">
+            <div className="mt-3 flex items-center justify-between">
+              <span className="font-semibold text-emerald-800">
+                Time Allowed
+              </span>
+
+              <span className="text-2xl font-bold text-emerald-800">
+                2 Hours
+              </span>
+            </div>
+
+            <p className="mt-3 text-xs text-emerald-700">
               Includes 10 Lekki Headmaster questions
               automatically.
             </p>
@@ -453,8 +430,8 @@ export default function CbtSetupPage() {
           <div className="mb-6 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
             Once started, the timer cannot be paused.
             There are no instant answers during the CBT.
-            The exam automatically submits when time runs
-            out.
+            The exam automatically submits when the
+            2-hour time limit expires.
           </div>
 
           <div className="space-y-3">
