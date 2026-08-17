@@ -83,7 +83,7 @@ const startSchema = z.object({
 });
 
 const DEFAULT_DURATION: Record<string, number> = {
-  cbt: 180 * 60,
+  cbt: 120 * 60,
   mock: 90 * 60,
   practice: 0,
   utme_challenge: 15 * 60,
@@ -122,24 +122,27 @@ export async function POST(request: Request) {
     cbt_config,
   } = parsed.data;
 
+  const isSpecialCbt =
+    mode === 'cbt' && !!cbt_config;
+
+  let questionIds: string[] = [];
+
   /*
-   * ----------------------------------------------------
+   * ====================================================
    * SPECIAL JAMB CBT
-   * ----------------------------------------------------
+   * ====================================================
    *
    * English Language       = 50
    * Lekki Headmaster       = 10
-   * Selected Subject 1     = 40
-   * Selected Subject 2     = 40
-   * Selected Subject 3     = 40
+   * Subject 1              = 40
+   * Subject 2              = 40
+   * Subject 3              = 40
    *
-   * TOTAL                   = 180
+   * TOTAL                  = 180
+   *
+   * TIME                   = 120 MINUTES
+   * ====================================================
    */
-  const isSpecialCbt =
-    mode === 'cbt' &&
-    !!cbt_config;
-
-  let questionIds: string[];
 
   try {
     if (isSpecialCbt) {
@@ -156,8 +159,9 @@ export async function POST(request: Request) {
         );
       }
 
-      // English and Lekki Headmaster are automatic.
-      // They must not be among the 3 student-selected subjects.
+      /*
+       * English and Lekki Headmaster are automatic.
+       */
       if (
         otherSubjectIds.includes(
           ENGLISH_SUBJECT_ID
@@ -175,8 +179,20 @@ export async function POST(request: Request) {
         );
       }
 
-      const englishCount =
-        cbt_config.english_question_count ?? 50;
+      /*
+       * The client may send English as 60 because the
+       * screen displays English = 60 total.
+       *
+       * Internally this means:
+       *
+       * 50 normal English
+       * +
+       * 10 Lekki Headmaster
+       *
+       * Therefore both 50 and 60 are accepted here.
+       */
+      const requestedEnglish =
+        cbt_config.english_question_count ?? 60;
 
       const lekkiCount =
         cbt_config.lekki_headmaster_count ?? 10;
@@ -184,31 +200,50 @@ export async function POST(request: Request) {
       const otherCount =
         cbt_config.other_subject_question_count ?? 40;
 
-      /*
-       * Force the official CBT numbers.
-       * The client cannot change them by sending different values.
-       */
       if (
-        englishCount !== 50 ||
-        lekkiCount !== 10 ||
-        otherCount !== 40
+        requestedEnglish !== 50 &&
+        requestedEnglish !== 60
       ) {
         return NextResponse.json(
           {
             error:
-              'Invalid CBT question configuration.',
+              'English CBT configuration must be 60 questions total (50 English + 10 Lekki Headmaster).',
           },
           { status: 400 }
         );
       }
 
+      if (lekkiCount !== 10) {
+        return NextResponse.json(
+          {
+            error:
+              'Lekki Headmaster must contain exactly 10 questions.',
+          },
+          { status: 400 }
+        );
+      }
+
+      if (otherCount !== 40) {
+        return NextResponse.json(
+          {
+            error:
+              'Each additional subject must contain exactly 40 questions.',
+          },
+          { status: 400 }
+        );
+      }
+
+      /*
+       * Select exact numbers for every subject.
+       */
       const subjectQuestionCounts = [
         {
           subjectId: ENGLISH_SUBJECT_ID,
           count: 50,
         },
         {
-          subjectId: LEKKI_HEADMASTER_SUBJECT_ID,
+          subjectId:
+            LEKKI_HEADMASTER_SUBJECT_ID,
           count: 10,
         },
         {
@@ -238,7 +273,6 @@ export async function POST(request: Request) {
 
         subjectQuestionCounts,
 
-        // JAMB CBT questions
         examType: 'jamb',
       });
 
@@ -251,15 +285,27 @@ export async function POST(request: Request) {
           { status: 404 }
         );
       }
+
+      /*
+       * IMPORTANT:
+       *
+       * selectQuestions normally shuffles everything.
+       *
+       * We now load the questions and arrange them into
+       * CBT sections:
+       *
+       * English + Lekki
+       * Subject 1
+       * Subject 2
+       * Subject 3
+       */
     } else {
       /*
-       * ------------------------------------------------
-       * NORMAL EXAM SELECTION
-       * ------------------------------------------------
-       *
-       * Practice, Mock and UTME Challenge continue
-       * using the normal filtering system.
+       * ==================================================
+       * NORMAL EXAMS
+       * ==================================================
        */
+
       questionIds = await selectQuestions({
         subjectIds: subject_ids,
         mode,
@@ -294,102 +340,11 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
 
   /*
-   * CBT always uses 180 questions and 180 minutes.
-   * Other modes use their normal duration.
+   * ====================================================
+   * LOAD PUBLIC QUESTIONS
+   * ====================================================
    */
-  const finalQuestionCount =
-    isSpecialCbt ? 180 : question_count;
 
-  const finalDuration =
-    isSpecialCbt
-      ? 180 * 60
-      : duration_seconds ??
-        DEFAULT_DURATION[mode];
-
-  /*
-   * Store the actual configuration in the attempt.
-   */
-  const { data: attempt, error: attemptError } =
-    await admin
-      .from('exam_attempts')
-      .insert({
-        student_id: caller.id,
-        mode,
-        subject_ids: isSpecialCbt
-          ? [
-              ENGLISH_SUBJECT_ID,
-              LEKKI_HEADMASTER_SUBJECT_ID,
-              ...(cbt_config?.other_subject_ids ?? []),
-            ]
-          : subject_ids,
-
-        config: {
-          question_count: finalQuestionCount,
-          difficulty,
-          exam_type: isSpecialCbt
-            ? 'jamb'
-            : exam_type,
-          year,
-          round_id,
-
-          cbt: isSpecialCbt
-            ? {
-                english_questions: 50,
-                lekki_headmaster_questions: 10,
-                questions_per_other_subject: 40,
-                other_subject_ids:
-                  cbt_config?.other_subject_ids,
-                total_questions: 180,
-              }
-            : null,
-        },
-
-        duration_seconds:
-          finalDuration || null,
-
-        status: 'in_progress',
-      })
-      .select(
-        'id, started_at, duration_seconds'
-      )
-      .single();
-
-  if (attemptError || !attempt) {
-    return NextResponse.json(
-      { error: 'Could not start exam.' },
-      { status: 500 }
-    );
-  }
-
-  /*
-   * Create the attempt-question records.
-   */
-  const attemptQuestionRows =
-    questionIds.map((qId, index) => ({
-      attempt_id: attempt.id,
-      question_id: qId,
-      position: index + 1,
-    }));
-
-  const {
-    error: attemptQuestionsError,
-  } = await admin
-    .from('attempt_questions')
-    .insert(attemptQuestionRows);
-
-  if (attemptQuestionsError) {
-    return NextResponse.json(
-      {
-        error:
-          'Could not create exam questions.',
-      },
-      { status: 500 }
-    );
-  }
-
-  /*
-   * Load the public question data.
-   */
   const {
     data: questions,
     error: questionsError,
@@ -408,28 +363,330 @@ export async function POST(request: Request) {
     );
   }
 
-  /*
-   * Preserve the randomized order.
-   */
-  const orderMap = new Map(
-    questionIds.map((id, index) => [
-      id,
-      index,
-    ])
-  );
+  if (!questions || questions.length !== questionIds.length) {
+    return NextResponse.json(
+      {
+        error:
+          'Some selected questions could not be loaded.',
+      },
+      { status: 500 }
+    );
+  }
 
-  const orderedQuestions =
-    (questions ?? []).sort(
+  /*
+   * ====================================================
+   * CREATE ORDER
+   * ====================================================
+   *
+   * CBT order:
+   *
+   * 1 - 50   English
+   * 51 - 60  Lekki Headmaster
+   * 61 - 100 Subject 1
+   * 101-140  Subject 2
+   * 141-180  Subject 3
+   *
+   * The UI will later display these as:
+   *
+   * English | Biology | Chemistry | Physics
+   *
+   * instead of a 1-180 question grid.
+   */
+
+  let orderedQuestions = [...questions];
+
+  if (isSpecialCbt && cbt_config) {
+    const otherSubjectIds =
+      cbt_config.other_subject_ids ?? [];
+
+    const englishQuestions =
+      questions.filter(
+        (q) =>
+          q.subject_id ===
+          ENGLISH_SUBJECT_ID
+      );
+
+    const lekkiQuestions =
+      questions.filter(
+        (q) =>
+          q.subject_id ===
+          LEKKI_HEADMASTER_SUBJECT_ID
+      );
+
+    const subject1Questions =
+      questions.filter(
+        (q) =>
+          q.subject_id ===
+          otherSubjectIds[0]
+      );
+
+    const subject2Questions =
+      questions.filter(
+        (q) =>
+          q.subject_id ===
+          otherSubjectIds[1]
+      );
+
+    const subject3Questions =
+      questions.filter(
+        (q) =>
+          q.subject_id ===
+          otherSubjectIds[2]
+      );
+
+    if (
+      englishQuestions.length !== 50 ||
+      lekkiQuestions.length !== 10 ||
+      subject1Questions.length !== 40 ||
+      subject2Questions.length !== 40 ||
+      subject3Questions.length !== 40
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'CBT could not organize the required questions by subject.',
+        },
+        { status: 500 }
+      );
+    }
+
+    orderedQuestions = [
+      ...englishQuestions,
+      ...lekkiQuestions,
+      ...subject1Questions,
+      ...subject2Questions,
+      ...subject3Questions,
+    ];
+  } else {
+    /*
+     * Preserve the randomized order returned by
+     * selectQuestions for normal exams.
+     */
+    const orderMap = new Map(
+      questionIds.map((id, index) => [
+        id,
+        index,
+      ])
+    );
+
+    orderedQuestions.sort(
       (a, b) =>
         (orderMap.get(a.id) ?? 0) -
         (orderMap.get(b.id) ?? 0)
     );
+  }
+
+  /*
+   * ====================================================
+   * FINAL CBT CONFIGURATION
+   * ====================================================
+   */
+
+  const finalQuestionCount =
+    isSpecialCbt ? 180 : question_count;
+
+  const finalDuration =
+    isSpecialCbt
+      ? 120 * 60
+      : duration_seconds ??
+        DEFAULT_DURATION[mode];
+
+  /*
+   * ====================================================
+   * CREATE EXAM ATTEMPT
+   * ====================================================
+   */
+
+  const { data: attempt, error: attemptError } =
+    await admin
+      .from('exam_attempts')
+      .insert({
+        student_id: caller.id,
+
+        mode,
+
+        subject_ids: isSpecialCbt
+          ? [
+              ENGLISH_SUBJECT_ID,
+              LEKKI_HEADMASTER_SUBJECT_ID,
+              ...(cbt_config?.other_subject_ids ?? []),
+            ]
+          : subject_ids,
+
+        config: {
+          question_count:
+            finalQuestionCount,
+
+          difficulty,
+
+          exam_type: isSpecialCbt
+            ? 'jamb'
+            : exam_type,
+
+          year,
+
+          round_id,
+
+          cbt: isSpecialCbt
+            ? {
+                english_questions: 50,
+
+                lekki_headmaster_questions: 10,
+
+                english_section_total: 60,
+
+                questions_per_other_subject: 40,
+
+                other_subject_ids:
+                  cbt_config?.other_subject_ids,
+
+                total_questions: 180,
+
+                duration_minutes: 120,
+
+                sections: [
+                  {
+                    key: 'english',
+                    label: 'English',
+                    question_count: 60,
+                  },
+                  {
+                    key: 'subject_1',
+                    subject_id:
+                      cbt_config?.other_subject_ids?.[0],
+                    question_count: 40,
+                  },
+                  {
+                    key: 'subject_2',
+                    subject_id:
+                      cbt_config?.other_subject_ids?.[1],
+                    question_count: 40,
+                  },
+                  {
+                    key: 'subject_3',
+                    subject_id:
+                      cbt_config?.other_subject_ids?.[2],
+                    question_count: 40,
+                  },
+                ],
+              }
+            : null,
+        },
+
+        duration_seconds:
+          finalDuration,
+
+        status: 'in_progress',
+      })
+      .select(
+        'id, started_at, duration_seconds'
+      )
+      .single();
+
+  if (attemptError || !attempt) {
+    return NextResponse.json(
+      {
+        error:
+          'Could not start exam.',
+      },
+      { status: 500 }
+    );
+  }
+
+  /*
+   * ====================================================
+   * CREATE ATTEMPT QUESTIONS
+   * ====================================================
+   */
+
+  const attemptQuestionRows =
+    orderedQuestions.map(
+      (question, index) => ({
+        attempt_id: attempt.id,
+        question_id: question.id,
+        position: index + 1,
+      })
+    );
+
+  const {
+    error: attemptQuestionsError,
+  } = await admin
+    .from('attempt_questions')
+    .insert(
+      attemptQuestionRows
+    );
+
+  if (attemptQuestionsError) {
+    return NextResponse.json(
+      {
+        error:
+          'Could not create exam questions.',
+      },
+      { status: 500 }
+    );
+  }
+
+  /*
+   * ====================================================
+   * RETURN CBT DATA
+   * ====================================================
+   */
+
+  const cbtSections = isSpecialCbt
+    ? [
+        {
+          key: 'english',
+          label: 'English',
+          start: 0,
+          count: 60,
+        },
+        {
+          key: 'subject_1',
+          label: 'Subject 1',
+          start: 60,
+          count: 40,
+          subject_id:
+            cbt_config?.other_subject_ids?.[0],
+        },
+        {
+          key: 'subject_2',
+          label: 'Subject 2',
+          start: 100,
+          count: 40,
+          subject_id:
+            cbt_config?.other_subject_ids?.[1],
+        },
+        {
+          key: 'subject_3',
+          label: 'Subject 3',
+          start: 140,
+          count: 40,
+          subject_id:
+            cbt_config?.other_subject_ids?.[2],
+        },
+      ]
+    : [];
 
   return NextResponse.json({
     attempt_id: attempt.id,
-    started_at: attempt.started_at,
+
+    started_at:
+      attempt.started_at,
+
     duration_seconds:
       attempt.duration_seconds,
-    questions: orderedQuestions,
+
+    questions:
+      orderedQuestions,
+
+    cbt: isSpecialCbt
+      ? {
+          total_questions: 180,
+
+          duration_minutes: 120,
+
+          sections: cbtSections,
+        }
+      : null,
   });
 }
