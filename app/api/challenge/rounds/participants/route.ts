@@ -90,7 +90,7 @@ export async function GET(request: Request) {
       ...participant,
       rank,
       student_name:
-        participant.profiles?.full_name || 'Unknown student',
+        participant.profiles?.[0]?.full_name || 'Unknown student',
     };
   });
 
