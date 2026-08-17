@@ -797,7 +797,6 @@ export function ExamRunner({
                   Submit
                 </Button>
               </div>
-            </div>
           </div>
         </div>
       )}
