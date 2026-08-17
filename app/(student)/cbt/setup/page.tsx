@@ -9,6 +9,12 @@ interface Subject {
   name: string;
 }
 
+const ENGLISH_SUBJECT_ID =
+  'e5705892-de46-425c-af42-e37a3eddc93d';
+
+const LEKKI_HEADMASTER_SUBJECT_ID =
+  '3bca9d00-18fd-4064-b3ac-41da6e7eefa6';
+
 const OTHER_SUBJECT_COUNT = 3;
 
 export default function CbtSetupPage() {
@@ -48,10 +54,15 @@ export default function CbtSetupPage() {
   }, []);
 
   const availableSubjects = useMemo(() => {
-    return subjects.filter(
-      (subject) =>
-        !subject.name.toLowerCase().includes('english')
-    );
+    return subjects.filter((subject) => {
+      const name = subject.name.toLowerCase();
+
+      return (
+        subject.id !== ENGLISH_SUBJECT_ID &&
+        subject.id !== LEKKI_HEADMASTER_SUBJECT_ID &&
+        !name.includes('english')
+      );
+    });
   }, [subjects]);
 
   function toggleSubject(id: string) {
@@ -59,13 +70,16 @@ export default function CbtSetupPage() {
 
     setSelectedSubjects((current) => {
       if (current.includes(id)) {
-        return current.filter((subjectId) => subjectId !== id);
+        return current.filter(
+          (subjectId) => subjectId !== id
+        );
       }
 
       if (current.length >= OTHER_SUBJECT_COUNT) {
         setError(
           'You can select only 3 additional subjects.'
         );
+
         return current;
       }
 
@@ -75,7 +89,10 @@ export default function CbtSetupPage() {
 
   function continueSetup() {
     if (selectedSubjects.length !== 3) {
-      setError('Please select exactly 3 additional subjects.');
+      setError(
+        'Please select exactly 3 additional subjects.'
+      );
+
       return;
     }
 
@@ -85,7 +102,10 @@ export default function CbtSetupPage() {
 
   async function handleStart() {
     if (selectedSubjects.length !== 3) {
-      setError('Please select exactly 3 additional subjects.');
+      setError(
+        'Please select exactly 3 additional subjects.'
+      );
+
       return;
     }
 
@@ -94,11 +114,17 @@ export default function CbtSetupPage() {
 
     try {
       /*
-       * English is automatically included by the CBT backend.
+       * JAMB CBT structure:
        *
-       * The three selected subjects each receive 40 questions.
-       * English receives 60 questions, including the 10
-       * automatically selected Lekki Headmaster questions.
+       * English Language       = 50
+       * Lekki Headmaster       = 10
+       * Each selected subject  = 40
+       *
+       * 50 + 10 + 40 + 40 + 40 = 180
+       *
+       * English is displayed as 60 in the UI because
+       * its section contains 50 English + 10 Lekki
+       * Headmaster questions.
        */
       const res = await fetch('/api/exams/start', {
         method: 'POST',
@@ -108,6 +134,11 @@ export default function CbtSetupPage() {
         body: JSON.stringify({
           mode: 'cbt',
 
+          /*
+           * The backend receives the 3 student-selected
+           * subjects here. English and Lekki Headmaster
+           * are automatically added by the backend.
+           */
           subject_ids: selectedSubjects,
 
           question_count: 180,
@@ -115,9 +146,19 @@ export default function CbtSetupPage() {
           duration_seconds: 180 * 60,
 
           cbt_config: {
-            english_question_count: 60,
+            /*
+             * IMPORTANT:
+             * This is 50, NOT 60.
+             *
+             * The 10 Lekki Headmaster questions are
+             * configured separately below.
+             */
+            english_question_count: 50,
+
             lekki_headmaster_count: 10,
+
             other_subject_question_count: 40,
+
             other_subject_ids: selectedSubjects,
           },
         }),
@@ -128,6 +169,12 @@ export default function CbtSetupPage() {
       if (!res.ok) {
         throw new Error(
           data.error ?? 'Could not start CBT exam.'
+        );
+      }
+
+      if (!data.attempt_id) {
+        throw new Error(
+          'CBT started but no exam attempt was created.'
         );
       }
 
