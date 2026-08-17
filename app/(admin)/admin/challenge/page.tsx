@@ -23,6 +23,7 @@ interface Participant {
   status: string | null;
   started_at: string | null;
   submitted_at: string | null;
+  duration_seconds: number | null;
   time_used_seconds: number | null;
   total_questions: number | null;
   correct_count: number | null;
@@ -99,7 +100,7 @@ export default function AdminChallengePage() {
 
     try {
       const response = await fetch(
-        `/api/challenge/participants?round_id=${encodeURIComponent(
+        `/api/challenge/rounds/participants?round_id=${encodeURIComponent(
           roundId
         )}`,
         {
@@ -153,6 +154,8 @@ export default function AdminChallengePage() {
         body: JSON.stringify({
           title: form.title.trim(),
           difficulty: form.difficulty,
+          question_count: 180,
+          duration_seconds: 7200,
           opens_at: form.opens_at
             ? new Date(form.opens_at).toISOString()
             : null,
@@ -183,7 +186,9 @@ export default function AdminChallengePage() {
 
       await loadRounds();
 
-      setSelectedRound(data.id);
+      if (data.id) {
+        setSelectedRound(data.id);
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -301,7 +306,9 @@ export default function AdminChallengePage() {
   }
 
   function formatTime(seconds: number | null) {
-    if (!seconds) return '—';
+    if (seconds === null || seconds === undefined) {
+      return '—';
+    }
 
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -314,23 +321,24 @@ export default function AdminChallengePage() {
   );
 
   const topThree = participants.filter(
-    (participant) => participant.rank <= 3
+    (participant) => participant.rank >= 1 && participant.rank <= 3
   );
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* HEADER */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">
           UTME Challenge
         </h1>
 
         <p className="mt-1 text-sm text-slate-500">
-          Manage rounds, participants, leaderboard and rewards.
+          Manage challenge rounds, participants, leaderboard and
+          rewards.
         </p>
       </div>
 
-      {/* Messages */}
+      {/* MESSAGES */}
       {message && (
         <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {message}
@@ -353,10 +361,12 @@ export default function AdminChallengePage() {
         </h2>
 
         <p className="mt-1 text-sm text-slate-500">
-          Questions are automatically selected from your CBT question bank.
+          Questions will automatically come from your CBT/imported
+          question bank.
         </p>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
+          {/* ROUND NAME */}
           <div className="md:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Round name
@@ -376,6 +386,7 @@ export default function AdminChallengePage() {
             />
           </div>
 
+          {/* DIFFICULTY */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Difficulty
@@ -400,6 +411,7 @@ export default function AdminChallengePage() {
             </select>
           </div>
 
+          {/* FORMAT */}
           <div className="rounded-xl bg-slate-50 p-4">
             <p className="text-xs text-slate-500">
               Challenge format
@@ -414,6 +426,7 @@ export default function AdminChallengePage() {
             </p>
           </div>
 
+          {/* OPENS */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Opens at
@@ -432,6 +445,7 @@ export default function AdminChallengePage() {
             />
           </div>
 
+          {/* CLOSES */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Closes at
@@ -451,6 +465,7 @@ export default function AdminChallengePage() {
           </div>
         </div>
 
+        {/* ACTIVE */}
         <label className="mt-5 flex items-center gap-3">
           <input
             type="checkbox"
@@ -478,47 +493,40 @@ export default function AdminChallengePage() {
 
       {/* ROUND SELECTOR */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end">
-          <div className="flex-1">
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Select challenge round
-            </label>
+        <label className="mb-1.5 block text-sm font-medium text-slate-700">
+          Select challenge round
+        </label>
 
-            <select
-              value={selectedRound}
-              onChange={(e) => setSelectedRound(e.target.value)}
-              disabled={loadingRounds}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
-            >
-              <option value="">
-                {loadingRounds
-                  ? 'Loading rounds...'
-                  : 'Select a round'}
-              </option>
+        <select
+          value={selectedRound}
+          onChange={(e) => setSelectedRound(e.target.value)}
+          disabled={loadingRounds}
+          className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
+        >
+          <option value="">
+            {loadingRounds
+              ? 'Loading rounds...'
+              : 'Select a round'}
+          </option>
 
-              {rounds.map((round) => (
-                <option key={round.id} value={round.id}>
-                  {round.title} — {round.difficulty}
-                </option>
-              ))}
-            </select>
-          </div>
+          {rounds.map((round) => (
+            <option key={round.id} value={round.id}>
+              {round.title} — {round.difficulty}
+            </option>
+          ))}
+        </select>
 
-          {currentRound && (
-            <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
-              <span className="font-medium text-slate-700">
-                {currentRound.is_active
-                  ? '🟢 Active'
-                  : '⚪ Inactive'}
-              </span>
-            </div>
-          )}
-        </div>
+        {rounds.length === 0 && !loadingRounds && (
+          <p className="mt-3 text-sm text-slate-500">
+            No challenge rounds have been created yet.
+          </p>
+        )}
       </section>
 
       {/* CURRENT ROUND */}
       {currentRound && (
         <>
+          {/* ROUND DETAILS */}
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -533,7 +541,9 @@ export default function AdminChallengePage() {
                   </span>
 
                   <span>180 questions</span>
+
                   <span>120 minutes</span>
+
                   <span>Score /400</span>
                 </div>
               </div>
@@ -567,8 +577,10 @@ export default function AdminChallengePage() {
             <div className="mt-4 rounded-xl bg-slate-50 p-4 text-xs text-slate-500">
               Opens: {formatDate(currentRound.opens_at)}
               <br />
+
               Closes: {formatDate(currentRound.closes_at)}
               <br />
+
               Student results:{' '}
               <strong className="text-slate-700">
                 {currentRound.results_released
@@ -677,7 +689,7 @@ export default function AdminChallengePage() {
                                 <button
                                   type="button"
                                   disabled={
-                                    rewarding === participant.id
+                                                                        rewarding === participant.id
                                   }
                                   onClick={() =>
                                     handleReward(participant.id)
@@ -718,58 +730,129 @@ export default function AdminChallengePage() {
             )}
           </section>
 
-          {/* TOP THREE */}
-          {topThree.length > 0 && (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <h2 className="text-lg font-bold text-slate-900">
-                🎁 Reward Winners
-              </h2>
+          {/* REWARD WINNERS */}
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  🎁 Reward Winners
+                </h2>
 
-              <p className="mt-1 text-sm text-slate-600">
-                The top three ranked students are eligible for
-                rewards.
-              </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  The top 3 students in this challenge round are
+                  eligible for rewards.
+                </p>
+              </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-700">
+                Top 3
+              </div>
+            </div>
+
+            {participants.length === 0 ? (
+              <div className="mt-5 rounded-xl bg-white p-6 text-center">
+                <p className="font-medium text-slate-700">
+                  No winners yet.
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Students must participate in this challenge before
+                  the top 3 winners can be selected.
+                </p>
+              </div>
+            ) : topThree.length === 0 ? (
+              <div className="mt-5 rounded-xl bg-white p-6 text-center">
+                <p className="font-medium text-slate-700">
+                  No winners yet.
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Completed challenge results are required before
+                  winners can be determined.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
                 {topThree.map((participant) => (
                   <div
                     key={participant.id}
                     className="rounded-xl bg-white p-4 shadow-sm"
                   >
-                    <p className="text-2xl">
-                      {participant.rank === 1
-                        ? '🥇'
-                        : participant.rank === 2
-                        ? '🥈'
-                        : '🥉'}
-                    </p>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-2xl">
+                          {participant.rank === 1
+                            ? '🥇'
+                            : participant.rank === 2
+                            ? '🥈'
+                            : '🥉'}
+                        </p>
 
-                    <p className="mt-2 font-semibold">
-                      {participant.student_name}
-                    </p>
+                        <p className="mt-2 font-semibold text-slate-900">
+                          {participant.student_name}
+                        </p>
 
-                    <p className="text-sm text-slate-500">
-                      {participant.score ?? 0}/400
-                    </p>
+                        <p className="mt-1 text-sm font-bold text-slate-700">
+                          {participant.score ?? 0}/400
+                        </p>
 
-                    {participant.whatsapp_number && (
-                      <a
-                        href={`https://wa.me/${participant.whatsapp_number.replace(
-                          /\D/g,
-                          ''
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 block text-sm font-medium text-emerald-600 hover:underline"
-                      >
-                        💬 Open WhatsApp
-                      </a>
-                    )}
+                        <p className="mt-1 text-xs text-slate-500">
+                          Rank {participant.rank}
+                        </p>
+                      </div>
+
+                      {participant.reward_given && (
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                          Rewarded
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      {participant.reward_given ? (
+                        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-medium text-emerald-700">
+                          ✅ Reward has been given
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={
+                            rewarding === participant.id
+                          }
+                          onClick={() =>
+                            handleReward(participant.id)
+                          }
+                          className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {rewarding === participant.id
+                            ? 'Recording...'
+                            : '🎁 Give Reward'}
+                        </button>
+                      )}
+
+                      {participant.whatsapp_number ? (
+                        <a
+                          href={`https://wa.me/${participant.whatsapp_number.replace(
+                            /\D/g,
+                            ''
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          💬 Open WhatsApp DM
+                        </a>
+                      ) : (
+                        <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-400">
+                          WhatsApp number not provided
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
-            </section>
-          )}
+            )}
+          </section>
         </>
       )}
     </div>
