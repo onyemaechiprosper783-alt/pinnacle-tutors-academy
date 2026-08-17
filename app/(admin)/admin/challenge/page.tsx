@@ -12,13 +12,40 @@ interface Round {
   opens_at: string | null;
   closes_at: string | null;
   is_active: boolean;
+  results_released?: boolean;
   created_at: string;
+}
+
+interface Participant {
+  id: string;
+  student_id: string;
+  round_id: string;
+  status: string | null;
+  started_at: string | null;
+  submitted_at: string | null;
+  time_used_seconds: number | null;
+  total_questions: number | null;
+  correct_count: number | null;
+  incorrect_count: number | null;
+  unanswered_count: number | null;
+  score: number | null;
+  whatsapp_number: string | null;
+  reward_given: boolean;
+  reward_given_at: string | null;
+  rank: number;
+  student_name: string;
 }
 
 export default function AdminChallengePage() {
   const [rounds, setRounds] = useState<Round[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+
+  const [selectedRound, setSelectedRound] = useState('');
   const [loadingRounds, setLoadingRounds] = useState(true);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [rewarding, setRewarding] = useState<string | null>(null);
+
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -32,6 +59,7 @@ export default function AdminChallengePage() {
 
   async function loadRounds() {
     setLoadingRounds(true);
+    setError('');
 
     try {
       const response = await fetch('/api/challenge/rounds', {
@@ -45,6 +73,10 @@ export default function AdminChallengePage() {
       }
 
       setRounds(data);
+
+      if (!selectedRound && data.length > 0) {
+        setSelectedRound(data[0].id);
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -56,14 +88,59 @@ export default function AdminChallengePage() {
     }
   }
 
+  async function loadParticipants(roundId: string) {
+    if (!roundId) {
+      setParticipants([]);
+      return;
+    }
+
+    setLoadingParticipants(true);
+    setError('');
+
+    try {
+      const response = await fetch(
+        `/api/challenge/participants?round_id=${encodeURIComponent(
+          roundId
+        )}`,
+        {
+          cache: 'no-store',
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || 'Could not load participants.'
+        );
+      }
+
+      setParticipants(data);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not load participants.'
+      );
+    } finally {
+      setLoadingParticipants(false);
+    }
+  }
+
   useEffect(() => {
     loadRounds();
   }, []);
 
+  useEffect(() => {
+    if (selectedRound) {
+      loadParticipants(selectedRound);
+    }
+  }, [selectedRound]);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
 
-    setLoading(true);
+    setCreating(true);
     setMessage('');
     setError('');
 
@@ -89,7 +166,9 @@ export default function AdminChallengePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Could not create round.');
+        throw new Error(
+          data.error || 'Could not create challenge round.'
+        );
       }
 
       setMessage('Challenge round created successfully.');
@@ -103,6 +182,8 @@ export default function AdminChallengePage() {
       });
 
       await loadRounds();
+
+      setSelectedRound(data.id);
     } catch (err) {
       setError(
         err instanceof Error
@@ -110,7 +191,106 @@ export default function AdminChallengePage() {
           : 'Could not create challenge round.'
       );
     } finally {
-      setLoading(false);
+      setCreating(false);
+    }
+  }
+
+  async function handleShowResults(released: boolean) {
+    if (!selectedRound) return;
+
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/challenge/results', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          round_id: selectedRound,
+          released,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || 'Could not update results.'
+        );
+      }
+
+      setRounds((current) =>
+        current.map((round) =>
+          round.id === selectedRound
+            ? {
+                ...round,
+                results_released: data.results_released,
+              }
+            : round
+        )
+      );
+
+      setMessage(
+        released
+          ? 'Results are now visible to students.'
+          : 'Results are hidden from students.'
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not update results.'
+      );
+    }
+  }
+
+  async function handleReward(participantId: string) {
+    setRewarding(participantId);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/challenge/rewards', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          participant_id: participantId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || 'Could not record reward.'
+        );
+      }
+
+      setParticipants((current) =>
+        current.map((participant) =>
+          participant.id === participantId
+            ? {
+                ...participant,
+                reward_given: true,
+                reward_given_at: data.reward_given_at,
+              }
+            : participant
+        )
+      );
+
+      setMessage('Reward recorded successfully.');
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not record reward.'
+      );
+    } finally {
+      setRewarding(null);
     }
   }
 
@@ -120,12 +300,25 @@ export default function AdminChallengePage() {
     return new Date(date).toLocaleString();
   }
 
-  function difficultyLabel(difficulty: Round['difficulty']) {
-    return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+  function formatTime(seconds: number | null) {
+    if (!seconds) return '—';
+
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+
+    return `${minutes}m ${remainingSeconds}s`;
   }
 
+  const currentRound = rounds.find(
+    (round) => round.id === selectedRound
+  );
+
+  const topThree = participants.filter(
+    (participant) => participant.rank <= 3
+  );
+
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">
@@ -133,28 +326,37 @@ export default function AdminChallengePage() {
         </h1>
 
         <p className="mt-1 text-sm text-slate-500">
-          Create and manage UTME Challenge rounds.
+          Manage rounds, participants, leaderboard and rewards.
         </p>
       </div>
 
-      {/* Create Round */}
+      {/* Messages */}
+      {message && (
+        <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {message}
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* CREATE ROUND */}
       <form
         onSubmit={handleCreate}
         className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
       >
-        <div className="mb-5">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Create Challenge Round
-          </h2>
+        <h2 className="text-lg font-semibold text-slate-900">
+          Create Challenge Round
+        </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Questions are automatically selected from the CBT question bank
-            when students start the challenge.
-          </p>
-        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          Questions are automatically selected from your CBT question bank.
+        </p>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Round name */}
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Round name
@@ -162,8 +364,6 @@ export default function AdminChallengePage() {
 
             <input
               required
-              type="text"
-              placeholder="e.g. UTME Challenge Round 1"
               value={form.title}
               onChange={(e) =>
                 setForm({
@@ -171,11 +371,11 @@ export default function AdminChallengePage() {
                   title: e.target.value,
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-emerald-500"
+              placeholder="e.g. UTME Challenge Round 1"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
             />
           </div>
 
-          {/* Difficulty */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Difficulty
@@ -192,7 +392,7 @@ export default function AdminChallengePage() {
                     | 'hard',
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-emerald-500"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
             >
               <option value="easy">Easy</option>
               <option value="medium">Medium</option>
@@ -200,9 +400,8 @@ export default function AdminChallengePage() {
             </select>
           </div>
 
-          {/* Fixed challenge information */}
-          <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <p className="text-xs font-medium text-slate-500">
+          <div className="rounded-xl bg-slate-50 p-4">
+            <p className="text-xs text-slate-500">
               Challenge format
             </p>
 
@@ -211,11 +410,10 @@ export default function AdminChallengePage() {
             </p>
 
             <p className="mt-1 text-xs text-slate-500">
-              Score is calculated out of 400.
+              Final score is out of 400.
             </p>
           </div>
 
-          {/* Opens */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Opens at
@@ -230,11 +428,10 @@ export default function AdminChallengePage() {
                   opens_at: e.target.value,
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-emerald-500"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
             />
           </div>
 
-          {/* Closes */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Closes at
@@ -249,13 +446,12 @@ export default function AdminChallengePage() {
                   closes_at: e.target.value,
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-emerald-500"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
             />
           </div>
         </div>
 
-        {/* Activate */}
-        <label className="mt-5 flex cursor-pointer items-center gap-3">
+        <label className="mt-5 flex items-center gap-3">
           <input
             type="checkbox"
             checked={form.is_active}
@@ -265,134 +461,317 @@ export default function AdminChallengePage() {
                 is_active: e.target.checked,
               })
             }
-            className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+            className="h-4 w-4"
           />
 
-          <div>
-            <p className="text-sm font-medium text-slate-800">
-              Activate this round
-            </p>
-
-            <p className="text-xs text-slate-500">
-              Students can only access active rounds.
-            </p>
-          </div>
+          <span className="text-sm font-medium text-slate-700">
+            Activate this round
+          </span>
         </label>
 
-        {/* Messages */}
-        {message && (
-          <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {message}
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
         <div className="mt-5">
-          <Button type="submit" loading={loading}>
+          <Button type="submit" loading={creating}>
             Create Round
           </Button>
         </div>
       </form>
 
-      {/* Existing rounds */}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              Challenge Rounds
-            </h2>
+      {/* ROUND SELECTOR */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+          <div className="flex-1">
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Select challenge round
+            </label>
 
-            <p className="text-sm text-slate-500">
-              Manage the rounds you have created.
-            </p>
+            <select
+              value={selectedRound}
+              onChange={(e) => setSelectedRound(e.target.value)}
+              disabled={loadingRounds}
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
+            >
+              <option value="">
+                {loadingRounds
+                  ? 'Loading rounds...'
+                  : 'Select a round'}
+              </option>
+
+              {rounds.map((round) => (
+                <option key={round.id} value={round.id}>
+                  {round.title} — {round.difficulty}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <button
-            type="button"
-            onClick={loadRounds}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
-            Refresh
-          </button>
+          {currentRound && (
+            <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
+              <span className="font-medium text-slate-700">
+                {currentRound.is_active
+                  ? '🟢 Active'
+                  : '⚪ Inactive'}
+              </span>
+            </div>
+          )}
         </div>
+      </section>
 
-        {loadingRounds ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-            Loading rounds...
-          </div>
-        ) : rounds.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-            <p className="font-medium text-slate-700">
-              No challenge rounds yet.
-            </p>
+      {/* CURRENT ROUND */}
+      {currentRound && (
+        <>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {currentRound.title}
+                </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Create your first UTME Challenge round above.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {rounds.map((round) => (
-              <div
-                key={round.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-              >
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-slate-900">
-                        {round.title}
-                      </h3>
+                <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
+                  <span>
+                    Difficulty:{' '}
+                    <strong>{currentRound.difficulty}</strong>
+                  </span>
 
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                          round.is_active
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        {round.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                      <span>
-                        Difficulty:{' '}
-                        <strong className="text-slate-700">
-                          {difficultyLabel(round.difficulty)}
-                        </strong>
-                      </span>
-
-                      <span>180 questions</span>
-
-                      <span>120 minutes</span>
-
-                      <span>Score /400</span>
-                    </div>
-
-                    <div className="mt-2 text-xs text-slate-400">
-                      Opens: {formatDate(round.opens_at)}
-                    </div>
-
-                    <div className="text-xs text-slate-400">
-                      Closes: {formatDate(round.closes_at)}
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-slate-400">
-                    Created {formatDate(round.created_at)}
-                  </div>
+                  <span>180 questions</span>
+                  <span>120 minutes</span>
+                  <span>Score /400</span>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={() =>
+                    handleShowResults(
+                      !currentRound.results_released
+                    )
+                  }
+                >
+                  {currentRound.results_released
+                    ? '🙈 Hide Results'
+                    : '👁 Show Results'}
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    loadParticipants(selectedRound)
+                  }
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-slate-50 p-4 text-xs text-slate-500">
+              Opens: {formatDate(currentRound.opens_at)}
+              <br />
+              Closes: {formatDate(currentRound.closes_at)}
+              <br />
+              Student results:{' '}
+              <strong className="text-slate-700">
+                {currentRound.results_released
+                  ? 'Visible'
+                  : 'Hidden'}
+              </strong>
+            </div>
+          </section>
+
+          {/* LEADERBOARD */}
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 p-5">
+              <h2 className="text-lg font-semibold text-slate-900">
+                🏆 Leaderboard
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Students ranked by their UTME Challenge score.
+              </p>
+            </div>
+
+            {loadingParticipants ? (
+              <div className="p-6 text-sm text-slate-500">
+                Loading participants...
+              </div>
+            ) : participants.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">
+                No students have participated in this round yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left text-sm">
+                  <thead className="bg-slate-50 text-xs text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Rank</th>
+                      <th className="px-4 py-3">Student</th>
+                      <th className="px-4 py-3">WhatsApp</th>
+                      <th className="px-4 py-3">Score</th>
+                      <th className="px-4 py-3">Correct</th>
+                      <th className="px-4 py-3">Incorrect</th>
+                      <th className="px-4 py-3">Time</th>
+                      <th className="px-4 py-3">Reward</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {participants.map((participant) => {
+                      const isWinner =
+                        participant.rank <= 3;
+
+                      return (
+                        <tr key={participant.id}>
+                          <td className="px-4 py-4 font-semibold">
+                            {participant.rank === 1
+                              ? '🥇 1'
+                              : participant.rank === 2
+                              ? '🥈 2'
+                              : participant.rank === 3
+                              ? '🥉 3'
+                              : participant.rank}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <p className="font-medium text-slate-900">
+                              {participant.student_name}
+                            </p>
+
+                            <p className="text-xs text-slate-400">
+                              {participant.student_id}
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-4">
+                            {participant.whatsapp_number || (
+                              <span className="text-slate-400">
+                                Not provided
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-4 py-4 font-bold text-slate-900">
+                            {participant.score ?? 0}/400
+                          </td>
+
+                          <td className="px-4 py-4 text-emerald-600">
+                            {participant.correct_count ?? 0}
+                          </td>
+
+                          <td className="px-4 py-4 text-red-500">
+                            {participant.incorrect_count ?? 0}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            {formatTime(
+                              participant.time_used_seconds
+                            )}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            {participant.reward_given ? (
+                              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                                Rewarded
+                              </span>
+                            ) : isWinner ? (
+                              <div className="flex flex-col gap-2">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    rewarding === participant.id
+                                  }
+                                  onClick={() =>
+                                    handleReward(participant.id)
+                                  }
+                                  className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                                >
+                                  {rewarding === participant.id
+                                    ? 'Recording...'
+                                    : '🎁 Give Reward'}
+                                </button>
+
+                                {participant.whatsapp_number && (
+                                  <a
+                                    href={`https://wa.me/${participant.whatsapp_number.replace(
+                                      /\D/g,
+                                      ''
+                                    )}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-center text-xs font-medium text-emerald-600 hover:underline"
+                                  >
+                                    💬 WhatsApp
+                                  </a>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                —
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* TOP THREE */}
+          {topThree.length > 0 && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <h2 className="text-lg font-bold text-slate-900">
+                🎁 Reward Winners
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-600">
+                The top three ranked students are eligible for
+                rewards.
+              </p>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {topThree.map((participant) => (
+                  <div
+                    key={participant.id}
+                    className="rounded-xl bg-white p-4 shadow-sm"
+                  >
+                    <p className="text-2xl">
+                      {participant.rank === 1
+                        ? '🥇'
+                        : participant.rank === 2
+                        ? '🥈'
+                        : '🥉'}
+                    </p>
+
+                    <p className="mt-2 font-semibold">
+                      {participant.student_name}
+                    </p>
+
+                    <p className="text-sm text-slate-500">
+                      {participant.score ?? 0}/400
+                    </p>
+
+                    {participant.whatsapp_number && (
+                      <a
+                        href={`https://wa.me/${participant.whatsapp_number.replace(
+                          /\D/g,
+                          ''
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 block text-sm font-medium text-emerald-600 hover:underline"
+                      >
+                        💬 Open WhatsApp
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }
