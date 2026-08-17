@@ -7,6 +7,7 @@ import type { ParsedQuestion } from '@/types/database';
 
 const commitSchema = z.object({
   batch_id: z.string().uuid(),
+
   questions: z.array(
     z.object({
       question_text: z.string().min(1),
@@ -38,7 +39,10 @@ function slugify(s: string) {
 export async function POST(request: Request) {
   const caller = await getCurrentProfile();
 
-  if (!caller || (caller.role !== 'admin' && caller.role !== 'super_admin')) {
+  if (
+    !caller ||
+    (caller.role !== 'admin' && caller.role !== 'super_admin')
+  ) {
     return NextResponse.json(
       { error: 'Not authorized.' },
       { status: 403 }
@@ -46,6 +50,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
+
   const parsed = commitSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -59,108 +64,185 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
+
   const { batch_id, questions } = parsed.data;
 
   const subjectCache = new Map<string, string>();
   const topicCache = new Map<string, string>();
   const passageCache = new Map<string, string>();
 
+  /*
+   * ---------------------------------------------------------
+   * FIND OR CREATE SUBJECT
+   * ---------------------------------------------------------
+   *
+   * First we look by slug.
+   * This prevents the duplicate subjects_slug_key problem.
+   */
   async function resolveSubjectId(name: string): Promise<string> {
-    const key = name.trim().toLowerCase();
+    const cleanName = name.trim();
+    const slug = slugify(cleanName);
+    const cacheKey = slug;
 
-    if (subjectCache.has(key)) {
-      return subjectCache.get(key)!;
+    if (subjectCache.has(cacheKey)) {
+      return subjectCache.get(cacheKey)!;
     }
 
-    const { data: existing, error: lookupError } = await admin
-      .from('subjects')
-      .select('id')
-      .ilike('name', name.trim())
-      .maybeSingle();
+    // 1. Find existing subject by slug
+    const { data: existingBySlug, error: slugLookupError } =
+      await admin
+        .from('subjects')
+        .select('id, name, slug')
+        .eq('slug', slug)
+        .maybeSingle();
 
-    if (lookupError) {
+    if (slugLookupError) {
       throw new Error(
-        `Could not find subject "${name}": ${lookupError.message}`
+        `Could not check subject "${cleanName}": ${slugLookupError.message}`
       );
     }
 
-    if (existing) {
-      subjectCache.set(key, existing.id);
-      return existing.id;
+    if (existingBySlug) {
+      subjectCache.set(cacheKey, existingBySlug.id);
+      return existingBySlug.id;
     }
 
-    const { data: created, error } = await admin
-      .from('subjects')
-      .insert({
-        name: name.trim(),
-        slug: slugify(name),
-      })
-      .select('id')
-      .single();
+    // 2. Find existing subject by name
+    const { data: existingByName, error: nameLookupError } =
+      await admin
+        .from('subjects')
+        .select('id, name, slug')
+        .ilike('name', cleanName)
+        .maybeSingle();
 
-    if (error || !created) {
+    if (nameLookupError) {
       throw new Error(
-        `Could not create subject "${name}": ${
-          error?.message ?? 'Unknown database error'
-        }`
+        `Could not check subject "${cleanName}": ${nameLookupError.message}`
       );
     }
 
-    subjectCache.set(key, created.id);
-    return created.id;
+    if (existingByName) {
+      subjectCache.set(cacheKey, existingByName.id);
+      return existingByName.id;
+    }
+
+    // 3. Create only if it truly does not exist
+    const { data: created, error: createError } =
+      await admin
+        .from('subjects')
+        .insert({
+          name: cleanName,
+          slug,
+        })
+        .select('id')
+        .single();
+
+    if (created) {
+      subjectCache.set(cacheKey, created.id);
+      return created.id;
+    }
+
+    /*
+     * 4. Race-condition protection:
+     * If another request created the same subject at the
+     * same time, fetch it again instead of failing.
+     */
+    if (
+      createError?.code === '23505' ||
+      createError?.message?.includes('subjects_slug_key')
+    ) {
+      const { data: duplicateSubject } = await admin
+        .from('subjects')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (duplicateSubject) {
+        subjectCache.set(cacheKey, duplicateSubject.id);
+        return duplicateSubject.id;
+      }
+    }
+
+    throw new Error(
+      `Could not create subject "${cleanName}": ${
+        createError?.message ?? 'Unknown error'
+      }`
+    );
   }
 
+  /*
+   * ---------------------------------------------------------
+   * FIND OR CREATE TOPIC
+   * ---------------------------------------------------------
+   */
   async function resolveTopicId(
     subjectId: string,
     name: string
   ): Promise<string> {
     const cleanName = name.trim();
-    const key = `${subjectId}:${cleanName.toLowerCase()}`;
+
+    const key = `${subjectId}:${slugify(cleanName)}`;
 
     if (topicCache.has(key)) {
       return topicCache.get(key)!;
     }
 
-    const { data: existing, error: lookupError } = await admin
+    const { data: existing } = await admin
       .from('topics')
       .select('id')
       .eq('subject_id', subjectId)
       .ilike('name', cleanName)
       .maybeSingle();
 
-    if (lookupError) {
-      throw new Error(
-        `Could not find topic "${cleanName}": ${lookupError.message}`
-      );
-    }
-
     if (existing) {
       topicCache.set(key, existing.id);
       return existing.id;
     }
+
+    const slug = slugify(cleanName);
 
     const { data: created, error } = await admin
       .from('topics')
       .insert({
         subject_id: subjectId,
         name: cleanName,
-        slug: slugify(cleanName),
+        slug,
       })
       .select('id')
       .single();
 
-    if (error || !created) {
-      throw new Error(
-        `Could not create topic "${cleanName}": ${
-          error?.message ?? 'Unknown database error'
-        }`
-      );
+    if (created) {
+      topicCache.set(key, created.id);
+      return created.id;
     }
 
-    topicCache.set(key, created.id);
-    return created.id;
+    // Handle duplicate topic safely
+    if (error?.code === '23505') {
+      const { data: duplicateTopic } = await admin
+        .from('topics')
+        .select('id')
+        .eq('subject_id', subjectId)
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (duplicateTopic) {
+        topicCache.set(key, duplicateTopic.id);
+        return duplicateTopic.id;
+      }
+    }
+
+    throw new Error(
+      `Could not create topic "${cleanName}": ${
+        error?.message ?? 'Unknown error'
+      }`
+    );
   }
 
+  /*
+   * ---------------------------------------------------------
+   * CREATE / REUSE PASSAGE
+   * ---------------------------------------------------------
+   */
   async function resolvePassageId(
     subjectId: string,
     text: string
@@ -184,16 +266,23 @@ export async function POST(request: Request) {
     if (error || !created) {
       throw new Error(
         `Could not create passage: ${
-          error?.message ?? 'Unknown database error'
+          error?.message ?? 'Unknown error'
         }`
       );
     }
 
     passageCache.set(cleanText, created.id);
+
     return created.id;
   }
 
+  /*
+   * ---------------------------------------------------------
+   * PREPARE QUESTIONS
+   * ---------------------------------------------------------
+   */
   const rowsToInsert: Record<string, unknown>[] = [];
+
   const errors: {
     question: ParsedQuestion;
     reason: string;
@@ -208,25 +297,45 @@ export async function POST(request: Request) {
         : null;
 
       const passageId = q.passage_text
-        ? await resolvePassageId(subjectId, q.passage_text)
+        ? await resolvePassageId(
+            subjectId,
+            q.passage_text
+          )
         : null;
 
       rowsToInsert.push({
         subject_id: subjectId,
         topic_id: topicId,
         passage_id: passageId,
+
         question_text: q.question_text,
+
         option_a: q.option_a,
         option_b: q.option_b,
         option_c: q.option_c,
         option_d: q.option_d,
+
         correct_answer: q.correct_answer,
+
         explanation: q.explanation ?? null,
+
         difficulty: q.difficulty ?? 'medium',
+
         exam_type: q.exam_type ?? 'general',
+
         year: q.year ?? null,
-        modes: q.modes ?? ['practice', 'mock', 'cbt'],
-        dedupe_hash: dedupeHash(q.question_text),
+
+        modes:
+          q.modes ?? [
+            'practice',
+            'mock',
+            'cbt',
+          ],
+
+        dedupe_hash: dedupeHash(
+          q.question_text
+        ),
+
         created_by: caller.id,
       });
     } catch (e) {
@@ -235,45 +344,83 @@ export async function POST(request: Request) {
         reason:
           e instanceof Error
             ? e.message
-            : 'Unknown error while preparing question.',
+            : 'Unknown error',
       });
     }
   }
 
+  /*
+   * ---------------------------------------------------------
+   * INSERT QUESTIONS
+   * ---------------------------------------------------------
+   */
   let insertedCount = 0;
 
+  let databaseError:
+    | {
+        message?: string;
+        details?: string;
+        hint?: string;
+        code?: string;
+      }
+    | null = null;
+
   if (rowsToInsert.length > 0) {
-    const { error: insertError, count } = await admin
+    const {
+      error: insertError,
+      count,
+    } = await admin
       .from('questions')
-      .insert(rowsToInsert, { count: 'exact' });
+      .insert(rowsToInsert, {
+        count: 'exact',
+      });
 
     if (insertError) {
-      return NextResponse.json(
-        {
-          error: 'Import failed while writing questions.',
-          database_error: {
-            message: insertError.message,
-            details: insertError.details,
-            hint: insertError.hint,
-            code: insertError.code,
-          },
-          prepared_questions: rowsToInsert.length,
-          preparation_errors: errors,
-        },
-        { status: 500 }
-      );
+      databaseError = {
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        code: insertError.code,
+      };
+    } else {
+      insertedCount =
+        count ?? rowsToInsert.length;
     }
-
-    insertedCount = count ?? rowsToInsert.length;
   }
 
+  /*
+   * ---------------------------------------------------------
+   * UPDATE IMPORT BATCH
+   * ---------------------------------------------------------
+   */
   await admin
     .from('import_batches')
     .update({
-      status: 'committed',
+      status: databaseError
+        ? 'failed'
+        : 'committed',
       committed_count: insertedCount,
     })
     .eq('id', batch_id);
+
+  /*
+   * ---------------------------------------------------------
+   * RESPONSE
+   * ---------------------------------------------------------
+   */
+  if (databaseError) {
+    return NextResponse.json(
+      {
+        success: false,
+        imported: insertedCount,
+        failed:
+          questions.length - insertedCount,
+        errors,
+        database_error: databaseError,
+      },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({
     success: true,
