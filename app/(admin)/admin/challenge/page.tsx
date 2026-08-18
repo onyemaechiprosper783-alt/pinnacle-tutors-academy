@@ -58,6 +58,80 @@ export default function AdminChallengePage() {
     is_active: false,
   });
 
+  /*
+   * =====================================================
+   * WHATSAPP NUMBER NORMALIZER
+   * =====================================================
+   *
+   * Converts Nigerian phone numbers into the format
+   * WhatsApp requires.
+   *
+   * Examples:
+   *
+   * 08012345678
+   *      ↓
+   * 2348012345678
+   *
+   * +2348012345678
+   *      ↓
+   * 2348012345678
+   *
+   * 2348012345678
+   *      ↓
+   * 2348012345678
+   *
+   * Numbers from other countries that already contain
+   * an international country code are left alone.
+   */
+
+  function normalizeWhatsAppNumber(
+    phone: string | null
+  ): string | null {
+    if (!phone) return null;
+
+    let number = phone.trim();
+
+    if (!number) return null;
+
+    // Remove spaces, brackets, hyphens, etc.
+    number = number.replace(/\D/g, '');
+
+    if (!number) return null;
+
+    // Nigerian number entered as 080...
+    if (number.startsWith('0')) {
+      number = `234${number.slice(1)}`;
+    }
+
+    // Nigerian number entered as +234...
+    // After removing non-digits, it is already 234...
+    if (number.startsWith('234')) {
+      return number;
+    }
+
+    /*
+     * If it doesn't start with 0 or 234, assume the student
+     * already entered an international number.
+     */
+    return number;
+  }
+
+  /*
+   * =====================================================
+   * WHATSAPP LINK
+   * =====================================================
+   */
+
+  function getWhatsAppLink(
+    phone: string | null
+  ): string | null {
+    const normalized = normalizeWhatsAppNumber(phone);
+
+    if (!normalized) return null;
+
+    return `https://wa.me/${normalized}`;
+  }
+
   async function loadRounds() {
     setLoadingRounds(true);
     setError('');
@@ -70,7 +144,9 @@ export default function AdminChallengePage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Could not load rounds.');
+        throw new Error(
+          data.error || 'Could not load rounds.'
+        );
       }
 
       setRounds(data);
@@ -138,7 +214,9 @@ export default function AdminChallengePage() {
     }
   }, [selectedRound]);
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreate(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
 
     setCreating(true);
@@ -146,35 +224,45 @@ export default function AdminChallengePage() {
     setError('');
 
     try {
-      const response = await fetch('/api/challenge/rounds', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: form.title.trim(),
-          difficulty: form.difficulty,
-          question_count: 180,
-          duration_seconds: 7200,
-          opens_at: form.opens_at
-            ? new Date(form.opens_at).toISOString()
-            : null,
-          closes_at: form.closes_at
-            ? new Date(form.closes_at).toISOString()
-            : null,
-          is_active: form.is_active,
-        }),
-      });
+      const response = await fetch(
+        '/api/challenge/rounds',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: form.title.trim(),
+            difficulty: form.difficulty,
+            question_count: 180,
+            duration_seconds: 7200,
+            opens_at: form.opens_at
+              ? new Date(
+                  form.opens_at
+                ).toISOString()
+              : null,
+            closes_at: form.closes_at
+              ? new Date(
+                  form.closes_at
+                ).toISOString()
+              : null,
+            is_active: form.is_active,
+          }),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not create challenge round.'
+          data.error ||
+            'Could not create challenge round.'
         );
       }
 
-      setMessage('Challenge round created successfully.');
+      setMessage(
+        'Challenge round created successfully.'
+      );
 
       setForm({
         title: '',
@@ -200,29 +288,35 @@ export default function AdminChallengePage() {
     }
   }
 
-  async function handleShowResults(released: boolean) {
+  async function handleShowResults(
+    released: boolean
+  ) {
     if (!selectedRound) return;
 
     setMessage('');
     setError('');
 
     try {
-      const response = await fetch('/api/challenge/results', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          round_id: selectedRound,
-          released,
-        }),
-      });
+      const response = await fetch(
+        '/api/challenge/results',
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            round_id: selectedRound,
+            released,
+          }),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not update results.'
+          data.error ||
+            'Could not update results.'
         );
       }
 
@@ -231,7 +325,8 @@ export default function AdminChallengePage() {
           round.id === selectedRound
             ? {
                 ...round,
-                results_released: data.results_released,
+                results_released:
+                  data.results_released,
               }
             : round
         )
@@ -251,27 +346,33 @@ export default function AdminChallengePage() {
     }
   }
 
-  async function handleReward(participantId: string) {
+  async function handleReward(
+    participantId: string
+  ) {
     setRewarding(participantId);
     setMessage('');
     setError('');
 
     try {
-      const response = await fetch('/api/challenge/rewards', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          participant_id: participantId,
-        }),
-      });
+      const response = await fetch(
+        '/api/challenge/rewards',
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            participant_id: participantId,
+          }),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not record reward.'
+          data.error ||
+            'Could not record reward.'
         );
       }
 
@@ -281,13 +382,16 @@ export default function AdminChallengePage() {
             ? {
                 ...participant,
                 reward_given: true,
-                reward_given_at: data.reward_given_at,
+                reward_given_at:
+                  data.reward_given_at,
               }
             : participant
         )
       );
 
-      setMessage('Reward recorded successfully.');
+      setMessage(
+        'Reward recorded successfully.'
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -299,46 +403,66 @@ export default function AdminChallengePage() {
     }
   }
 
-  function formatDate(date: string | null) {
+  function formatDate(
+    date: string | null
+  ) {
     if (!date) return 'Not set';
 
-    return new Date(date).toLocaleString();
+    return new Date(
+      date
+    ).toLocaleString();
   }
 
-  function formatTime(seconds: number | null) {
-    if (seconds === null || seconds === undefined) {
+  function formatTime(
+    seconds: number | null
+  ) {
+    if (
+      seconds === null ||
+      seconds === undefined
+    ) {
       return '—';
     }
 
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
+    const minutes =
+      Math.floor(seconds / 60);
+
+    const remainingSeconds =
+      seconds % 60;
 
     return `${minutes}m ${remainingSeconds}s`;
   }
 
-  const currentRound = rounds.find(
-    (round) => round.id === selectedRound
-  );
+  const currentRound =
+    rounds.find(
+      (round) =>
+        round.id === selectedRound
+    );
 
-  const topThree = participants.filter(
-    (participant) => participant.rank >= 1 && participant.rank <= 3
-  );
+  const topThree =
+    participants.filter(
+      (participant) =>
+        participant.rank >= 1 &&
+        participant.rank <= 3
+    );
 
   return (
     <div className="space-y-6">
       {/* HEADER */}
+
       <div>
         <h1 className="text-2xl font-bold text-slate-900">
           UTME Challenge
         </h1>
 
         <p className="mt-1 text-sm text-slate-500">
-          Manage challenge rounds, participants, leaderboard and
+          Manage challenge rounds,
+          participants, leaderboard and
           rewards.
         </p>
       </div>
 
       {/* MESSAGES */}
+
       {message && (
         <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {message}
@@ -352,6 +476,7 @@ export default function AdminChallengePage() {
       )}
 
       {/* CREATE ROUND */}
+
       <form
         onSubmit={handleCreate}
         className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -361,12 +486,11 @@ export default function AdminChallengePage() {
         </h2>
 
         <p className="mt-1 text-sm text-slate-500">
-          Questions will automatically come from your CBT/imported
-          question bank.
+          Questions will automatically come
+          from your CBT/imported question bank.
         </p>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          {/* ROUND NAME */}
           <div className="md:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Round name
@@ -386,7 +510,6 @@ export default function AdminChallengePage() {
             />
           </div>
 
-          {/* DIFFICULTY */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Difficulty
@@ -397,21 +520,29 @@ export default function AdminChallengePage() {
               onChange={(e) =>
                 setForm({
                   ...form,
-                  difficulty: e.target.value as
-                    | 'easy'
-                    | 'medium'
-                    | 'hard',
+                  difficulty:
+                    e.target.value as
+                      | 'easy'
+                      | 'medium'
+                      | 'hard',
                 })
               }
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
             >
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
+              <option value="easy">
+                Easy
+              </option>
+
+              <option value="medium">
+                Medium
+              </option>
+
+              <option value="hard">
+                Hard
+              </option>
             </select>
           </div>
 
-          {/* FORMAT */}
           <div className="rounded-xl bg-slate-50 p-4">
             <p className="text-xs text-slate-500">
               Challenge format
@@ -426,7 +557,6 @@ export default function AdminChallengePage() {
             </p>
           </div>
 
-          {/* OPENS */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Opens at
@@ -445,7 +575,6 @@ export default function AdminChallengePage() {
             />
           </div>
 
-          {/* CLOSES */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Closes at
@@ -465,7 +594,6 @@ export default function AdminChallengePage() {
           </div>
         </div>
 
-        {/* ACTIVE */}
         <label className="mt-5 flex items-center gap-3">
           <input
             type="checkbox"
@@ -473,7 +601,8 @@ export default function AdminChallengePage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                is_active: e.target.checked,
+                is_active:
+                  e.target.checked,
               })
             }
             className="h-4 w-4"
@@ -485,13 +614,17 @@ export default function AdminChallengePage() {
         </label>
 
         <div className="mt-5">
-          <Button type="submit" loading={creating}>
+          <Button
+            type="submit"
+            loading={creating}
+          >
             Create Round
           </Button>
         </div>
       </form>
 
       {/* ROUND SELECTOR */}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <label className="mb-1.5 block text-sm font-medium text-slate-700">
           Select challenge round
@@ -499,7 +632,11 @@ export default function AdminChallengePage() {
 
         <select
           value={selectedRound}
-          onChange={(e) => setSelectedRound(e.target.value)}
+          onChange={(e) =>
+            setSelectedRound(
+              e.target.value
+            )
+          }
           disabled={loadingRounds}
           className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-emerald-500"
         >
@@ -510,23 +647,29 @@ export default function AdminChallengePage() {
           </option>
 
           {rounds.map((round) => (
-            <option key={round.id} value={round.id}>
-              {round.title} — {round.difficulty}
+            <option
+              key={round.id}
+              value={round.id}
+            >
+              {round.title} —{' '}
+              {round.difficulty}
             </option>
           ))}
         </select>
 
-        {rounds.length === 0 && !loadingRounds && (
-          <p className="mt-3 text-sm text-slate-500">
-            No challenge rounds have been created yet.
-          </p>
-        )}
+        {rounds.length === 0 &&
+          !loadingRounds && (
+            <p className="mt-3 text-sm text-slate-500">
+              No challenge rounds have
+              been created yet.
+            </p>
+          )}
       </section>
 
       {/* CURRENT ROUND */}
+
       {currentRound && (
         <>
-          {/* ROUND DETAILS */}
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -537,14 +680,24 @@ export default function AdminChallengePage() {
                 <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
                   <span>
                     Difficulty:{' '}
-                    <strong>{currentRound.difficulty}</strong>
+                    <strong>
+                      {
+                        currentRound.difficulty
+                      }
+                    </strong>
                   </span>
 
-                  <span>180 questions</span>
+                  <span>
+                    180 questions
+                  </span>
 
-                  <span>120 minutes</span>
+                  <span>
+                    120 minutes
+                  </span>
 
-                  <span>Score /400</span>
+                  <span>
+                    Score /400
+                  </span>
                 </div>
               </div>
 
@@ -565,7 +718,9 @@ export default function AdminChallengePage() {
                 <button
                   type="button"
                   onClick={() =>
-                    loadParticipants(selectedRound)
+                    loadParticipants(
+                      selectedRound
+                    )
                   }
                   className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
@@ -575,10 +730,16 @@ export default function AdminChallengePage() {
             </div>
 
             <div className="mt-4 rounded-xl bg-slate-50 p-4 text-xs text-slate-500">
-              Opens: {formatDate(currentRound.opens_at)}
+              Opens:{' '}
+              {formatDate(
+                currentRound.opens_at
+              )}
               <br />
 
-              Closes: {formatDate(currentRound.closes_at)}
+              Closes:{' '}
+              {formatDate(
+                currentRound.closes_at
+              )}
               <br />
 
               Student results:{' '}
@@ -591,6 +752,7 @@ export default function AdminChallengePage() {
           </section>
 
           {/* LEADERBOARD */}
+
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 p-5">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -598,7 +760,8 @@ export default function AdminChallengePage() {
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Students ranked by their UTME Challenge score.
+                Students ranked by their UTME
+                Challenge score.
               </p>
             </div>
 
@@ -606,23 +769,48 @@ export default function AdminChallengePage() {
               <div className="p-6 text-sm text-slate-500">
                 Loading participants...
               </div>
-            ) : participants.length === 0 ? (
+            ) : participants.length ===
+              0 ? (
               <div className="p-8 text-center text-sm text-slate-500">
-                No students have participated in this round yet.
+                No students have participated
+                in this round yet.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px] text-left text-sm">
                   <thead className="bg-slate-50 text-xs text-slate-500">
                     <tr>
-                      <th className="px-4 py-3">Rank</th>
-                      <th className="px-4 py-3">Student</th>
-                      <th className="px-4 py-3">WhatsApp</th>
-                      <th className="px-4 py-3">Score</th>
-                      <th className="px-4 py-3">Correct</th>
-                      <th className="px-4 py-3">Incorrect</th>
-                      <th className="px-4 py-3">Time</th>
-                      <th className="px-4 py-3">Reward</th>
+                      <th className="px-4 py-3">
+                        Rank
+                      </th>
+
+                      <th className="px-4 py-3">
+                        Student
+                      </th>
+
+                      <th className="px-4 py-3">
+                        WhatsApp
+                      </th>
+
+                      <th className="px-4 py-3">
+                        Score
+                      </th>
+
+                      <th className="px-4 py-3">
+                        Correct
+                      </th>
+
+                      <th className="px-4 py-3">
+                        Incorrect
+                      </th>
+                      
+                      <th className="px-4 py-3">
+                        Time
+                      </th>
+
+                      <th className="px-4 py-3">
+                        Reward
+                      </th>
                     </tr>
                   </thead>
 
@@ -631,8 +819,14 @@ export default function AdminChallengePage() {
                       const isWinner =
                         participant.rank <= 3;
 
+                      const whatsappLink =
+                        getWhatsAppLink(
+                          participant.whatsapp_number
+                        );
+
                       return (
                         <tr key={participant.id}>
+                          {/* RANK */}
                           <td className="px-4 py-4 font-semibold">
                             {participant.rank === 1
                               ? '🥇 1'
@@ -643,6 +837,7 @@ export default function AdminChallengePage() {
                               : participant.rank}
                           </td>
 
+                          {/* STUDENT */}
                           <td className="px-4 py-4">
                             <p className="font-medium text-slate-900">
                               {participant.student_name}
@@ -653,32 +848,59 @@ export default function AdminChallengePage() {
                             </p>
                           </td>
 
+                          {/* WHATSAPP */}
                           <td className="px-4 py-4">
-                            {participant.whatsapp_number || (
-                              <span className="text-slate-400">
+                            {participant.whatsapp_number ? (
+                              <div className="flex flex-col gap-2">
+                                <span className="text-xs text-slate-600">
+                                  {participant.whatsapp_number}
+                                </span>
+
+                                {whatsappLink ? (
+                                  <a
+                                    href={whatsappLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex w-fit rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                                  >
+                                    💬 Open WhatsApp
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-red-500">
+                                    Invalid number
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">
                                 Not provided
                               </span>
                             )}
                           </td>
 
+                          {/* SCORE */}
                           <td className="px-4 py-4 font-bold text-slate-900">
                             {participant.score ?? 0}/400
                           </td>
 
+                          {/* CORRECT */}
                           <td className="px-4 py-4 text-emerald-600">
                             {participant.correct_count ?? 0}
                           </td>
 
+                          {/* INCORRECT */}
                           <td className="px-4 py-4 text-red-500">
                             {participant.incorrect_count ?? 0}
                           </td>
 
+                          {/* TIME */}
                           <td className="px-4 py-4">
                             {formatTime(
                               participant.time_used_seconds
                             )}
                           </td>
 
+                          {/* REWARD */}
                           <td className="px-4 py-4">
                             {participant.reward_given ? (
                               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
@@ -689,24 +911,25 @@ export default function AdminChallengePage() {
                                 <button
                                   type="button"
                                   disabled={
-                                                                        rewarding === participant.id
+                                    rewarding ===
+                                    participant.id
                                   }
                                   onClick={() =>
-                                    handleReward(participant.id)
+                                    handleReward(
+                                      participant.id
+                                    )
                                   }
                                   className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
                                 >
-                                  {rewarding === participant.id
+                                  {rewarding ===
+                                  participant.id
                                     ? 'Recording...'
                                     : '🎁 Give Reward'}
                                 </button>
 
-                                {participant.whatsapp_number && (
+                                {whatsappLink && (
                                   <a
-                                    href={`https://wa.me/${participant.whatsapp_number.replace(
-                                      /\D/g,
-                                      ''
-                                    )}`}
+                                    href={whatsappLink}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-center text-xs font-medium text-emerald-600 hover:underline"
@@ -739,8 +962,9 @@ export default function AdminChallengePage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-600">
-                  The top 3 students in this challenge round are
-                  eligible for rewards.
+                  The top 3 students in this
+                  challenge round are eligible
+                  for rewards.
                 </p>
               </div>
 
@@ -756,8 +980,9 @@ export default function AdminChallengePage() {
                 </p>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Students must participate in this challenge before
-                  the top 3 winners can be selected.
+                  Students must participate in
+                  this challenge before the top 3
+                  winners can be selected.
                 </p>
               </div>
             ) : topThree.length === 0 ? (
@@ -767,89 +992,105 @@ export default function AdminChallengePage() {
                 </p>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Completed challenge results are required before
-                  winners can be determined.
+                  Completed challenge results
+                  are required before winners can
+                  be determined.
                 </p>
               </div>
             ) : (
               <div className="mt-5 grid gap-4 md:grid-cols-3">
-                {topThree.map((participant) => (
-                  <div
-                    key={participant.id}
-                    className="rounded-xl bg-white p-4 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-2xl">
-                          {participant.rank === 1
-                            ? '🥇'
-                            : participant.rank === 2
-                            ? '🥈'
-                            : '🥉'}
-                        </p>
+                {topThree.map((participant) => {
+                  const whatsappLink =
+                    getWhatsAppLink(
+                      participant.whatsapp_number
+                    );
 
-                        <p className="mt-2 font-semibold text-slate-900">
-                          {participant.student_name}
-                        </p>
+                  return (
+                    <div
+                      key={participant.id}
+                      className="rounded-xl bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-2xl">
+                            {participant.rank === 1
+                              ? '🥇'
+                              : participant.rank === 2
+                              ? '🥈'
+                              : '🥉'}
+                          </p>
 
-                        <p className="mt-1 text-sm font-bold text-slate-700">
-                          {participant.score ?? 0}/400
-                        </p>
+                          <p className="mt-2 font-semibold text-slate-900">
+                            {participant.student_name}
+                          </p>
 
-                        <p className="mt-1 text-xs text-slate-500">
-                          Rank {participant.rank}
-                        </p>
+                          <p className="mt-1 text-sm font-bold text-slate-700">
+                            {participant.score ?? 0}/400
+                          </p>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            Rank {participant.rank}
+                          </p>
+
+                          {participant.whatsapp_number && (
+                            <p className="mt-2 text-xs text-slate-500">
+                              WhatsApp:{' '}
+                              {participant.whatsapp_number}
+                            </p>
+                          )}
+                        </div>
+
+                        {participant.reward_given && (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                            Rewarded
+                          </span>
+                        )}
                       </div>
 
-                      {participant.reward_given && (
-                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                          Rewarded
-                        </span>
-                      )}
-                    </div>
+                      <div className="mt-4 space-y-2">
+                        {participant.reward_given ? (
+                          <div className="rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-medium text-emerald-700">
+                            ✅ Reward has been given
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={
+                              rewarding ===
+                              participant.id
+                            }
+                            onClick={() =>
+                              handleReward(
+                                participant.id
+                              )
+                            }
+                            className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {rewarding ===
+                            participant.id
+                              ? 'Recording...'
+                              : '🎁 Give Reward'}
+                          </button>
+                        )}
 
-                    <div className="mt-4 space-y-2">
-                      {participant.reward_given ? (
-                        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-center text-xs font-medium text-emerald-700">
-                          ✅ Reward has been given
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={
-                            rewarding === participant.id
-                          }
-                          onClick={() =>
-                            handleReward(participant.id)
-                          }
-                          className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {rewarding === participant.id
-                            ? 'Recording...'
-                            : '🎁 Give Reward'}
-                        </button>
-                      )}
-
-                      {participant.whatsapp_number ? (
-                        <a
-                          href={`https://wa.me/${participant.whatsapp_number.replace(
-                            /\D/g,
-                            ''
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
-                        >
-                          💬 Open WhatsApp DM
-                        </a>
-                      ) : (
-                        <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-400">
-                          WhatsApp number not provided
-                        </div>
-                      )}
+                        {whatsappLink ? (
+                          <a
+                            href={whatsappLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                          >
+                            💬 Open WhatsApp DM
+                          </a>
+                        ) : (
+                          <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-400">
+                            WhatsApp number not provided
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -857,4 +1098,6 @@ export default function AdminChallengePage() {
       )}
     </div>
   );
-}
+                                    }
+
+      
