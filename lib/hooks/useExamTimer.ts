@@ -2,18 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-interface UseExamTimerOptions {
-  durationSeconds: number | null;
-  onExpire: () => void;
-}
-
-export function useExamTimer({
-  durationSeconds,
-  onExpire,
-}: UseExamTimerOptions) {
-  const [secondsLeft, setSecondsLeft] = useState(
-    Math.max(0, durationSeconds ?? 0)
-  );
+export function useExamTimer(
+  durationSeconds: number | null,
+  onExpire: () => void
+) {
+  const [secondsLeft, setSecondsLeft] =
+    useState(durationSeconds ?? 0);
 
   const expiredRef = useRef(false);
   const onExpireRef = useRef(onExpire);
