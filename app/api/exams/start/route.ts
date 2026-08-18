@@ -34,7 +34,11 @@ const startSchema = z.object({
     .optional(),
 
   difficulty: z
-    .enum(['easy', 'medium', 'hard'])
+    .enum([
+      'easy',
+      'medium',
+      'hard',
+    ])
     .optional(),
 
   exam_type: z
@@ -54,8 +58,8 @@ const startSchema = z.object({
     .optional(),
 
   /*
-   * A challenge round can be supplied
-   * while the actual exam mode remains CBT.
+   * UTME Challenge uses CBT mode.
+   * round_id identifies the challenge.
    */
   round_id: z
     .string()
@@ -122,6 +126,11 @@ export async function POST(
     startSchema.safeParse(body);
 
   if (!parsed.success) {
+    console.error(
+      'Invalid exam configuration:',
+      parsed.error
+    );
+
     return NextResponse.json(
       {
         error:
@@ -148,18 +157,10 @@ export async function POST(
 
   /*
    * ====================================================
-   * DETECT SPECIAL JAMB CBT / UTME CHALLENGE
+   * DETECT CHALLENGE / SPECIAL CBT
    * ====================================================
-   *
-   * The challenge uses CBT mode.
-   *
-   * Therefore:
-   *
-   * mode === 'cbt'
-   *
-   * and a round_id means this CBT attempt
-   * belongs to a challenge round.
    */
+
   const isChallenge =
     mode === 'cbt' &&
     !!round_id;
@@ -170,15 +171,10 @@ export async function POST(
 
   /*
    * ====================================================
-   * CHALLENGE ROUND TIME
+   * CHALLENGE ROUND
    * ====================================================
-   *
-   * The challenge timer starts when the
-   * administrator activates the round.
-   *
-   * It does NOT restart when the student
-   * opens the exam.
    */
+
   let challengeRound:
     | {
         id: string;
@@ -253,9 +249,6 @@ export async function POST(
       );
     }
 
-    /*
-     * GLOBAL CHALLENGE CLOCK
-     */
     const activatedAt =
       new Date(
         round.activated_at
@@ -278,9 +271,6 @@ export async function POST(
       totalChallengeSeconds -
       elapsedSeconds;
 
-    /*
-     * Challenge has already ended.
-     */
     if (remainingSeconds <= 0) {
       return NextResponse.json(
         {
@@ -295,23 +285,105 @@ export async function POST(
       remainingSeconds;
   }
 
-  let questionIds: string[] = [];
+  /*
+   * ====================================================
+   * GET ACTUAL SUBJECT NAMES
+   * ====================================================
+   *
+   * This is the important fix.
+   *
+   * Previously the sections were labelled:
+   *
+   *   Subject 1
+   *   Subject 2
+   *   Subject 3
+   *
+   * Now we load the actual names from the subjects table.
+   */
+
+  let selectedSubjectNames: string[] = [];
+
+  if (
+    isSpecialCbt &&
+    cbt_config?.other_subject_ids
+  ) {
+    const otherSubjectIds =
+      cbt_config.other_subject_ids;
+
+    const {
+      data: selectedSubjects,
+      error: subjectsError,
+    } = await admin
+      .from('subjects')
+      .select('id, name')
+      .in(
+        'id',
+        otherSubjectIds
+      );
+
+    if (subjectsError) {
+      console.error(
+        'Subject names lookup error:',
+        subjectsError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            'Could not load the selected subject names.',
+        },
+        { status: 500 }
+      );
+    }
+
+    const subjectMap =
+      new Map(
+        (selectedSubjects ?? []).map(
+          (subject) => [
+            subject.id,
+            subject.name,
+          ]
+        )
+      );
+
+    /*
+     * Keep the exact order selected by the student.
+     */
+    selectedSubjectNames =
+      otherSubjectIds.map(
+        (subjectId) =>
+          subjectMap.get(
+            subjectId
+          ) ?? 'Unknown Subject'
+      );
+
+    if (
+      selectedSubjectNames.length !== 3 ||
+      selectedSubjectNames.some(
+        (name) =>
+          !name ||
+          name ===
+            'Unknown Subject'
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'One or more selected subjects could not be found.',
+        },
+        { status: 404 }
+      );
+    }
+  }
 
   /*
    * ====================================================
-   * SPECIAL JAMB CBT
+   * SELECT QUESTIONS
    * ====================================================
-   *
-   * 60 English
-   *   - 50 English
-   *   - 10 Lekki Headmaster
-   *
-   * 40 Subject 1
-   * 40 Subject 2
-   * 40 Subject 3
-   *
-   * TOTAL = 180
    */
+
+  let questionIds: string[] = [];
+
   try {
     if (isSpecialCbt) {
       const otherSubjectIds =
@@ -363,12 +435,6 @@ export async function POST(
           ?.other_subject_question_count ??
         40;
 
-      /*
-       * The 60 English section is:
-       *
-       * 50 English
-       * 10 Lekki Headmaster
-       */
       if (
         requestedEnglish !== 50 &&
         requestedEnglish !== 60
@@ -461,12 +527,6 @@ export async function POST(
         );
       }
     } else {
-      /*
-       * ==================================================
-       * NORMAL EXAMS
-       * ==================================================
-       */
-
       questionIds =
         await selectQuestions({
           subjectIds:
@@ -527,7 +587,10 @@ export async function POST(
     await admin
       .from('questions_public')
       .select('*')
-      .in('id', questionIds);
+      .in(
+        'id',
+        questionIds
+      );
 
   if (questionsError) {
     console.error(
@@ -658,7 +721,7 @@ export async function POST(
 
   /*
    * ====================================================
-   * FINAL CONFIGURATION
+   * FINAL QUESTION COUNT
    * ====================================================
    */
 
@@ -668,19 +731,18 @@ export async function POST(
       : question_count;
 
   /*
-   * Challenge:
-   * use the remaining global round time.
-   *
-   * Normal CBT:
-   * use 120 minutes.
+   * ====================================================
+   * FINAL DURATION
+   * ====================================================
    */
+
   const finalDuration =
     isChallenge
       ? challengeRemainingSeconds!
       : isSpecialCbt
-      ? 120 * 60
-      : duration_seconds ??
-        DEFAULT_DURATION[mode];
+        ? 120 * 60
+        : duration_seconds ??
+          DEFAULT_DURATION[mode];
 
   /*
    * ====================================================
@@ -697,12 +759,6 @@ export async function POST(
       student_id:
         caller.id,
 
-      /*
-       * IMPORTANT:
-       *
-       * The UTME Challenge is STILL
-       * stored as CBT mode.
-       */
       mode: 'cbt',
 
       subject_ids:
@@ -732,10 +788,16 @@ export async function POST(
         round_id,
 
         /*
-         * =================================================
-         * CHALLENGE CONFIG
-         * =================================================
+         * Store the selected subject names too.
+         * This makes them available later without having
+         * to guess which "Subject 1" is which.
          */
+
+        selected_subject_names:
+          isSpecialCbt
+            ? selectedSubjectNames
+            : [],
+
         challenge:
           isChallenge
             ? {
@@ -776,11 +838,6 @@ export async function POST(
               }
             : null,
 
-        /*
-         * =================================================
-         * CBT CONFIG
-         * =================================================
-         */
         cbt: isSpecialCbt
           ? {
               is_challenge:
@@ -808,6 +865,9 @@ export async function POST(
                 cbt_config
                   ?.other_subject_ids,
 
+              other_subject_names:
+                selectedSubjectNames,
+
               total_questions:
                 180,
 
@@ -821,27 +881,39 @@ export async function POST(
                   question_count:
                     60,
                 },
+
                 {
                   key: 'subject_1',
+                  label:
+                    selectedSubjectNames[0],
                   subject_id:
-                    cbt_config
-                      ?.other_subject_ids?.[0],
+                    otherSubjectIdsSafe(
+                      cbt_config
+                    )[0],
                   question_count:
                     40,
                 },
+
                 {
                   key: 'subject_2',
+                  label:
+                    selectedSubjectNames[1],
                   subject_id:
-                    cbt_config
-                      ?.other_subject_ids?.[1],
+                    otherSubjectIdsSafe(
+                      cbt_config
+                    )[1],
                   question_count:
                     40,
                 },
+
                 {
                   key: 'subject_3',
+                  label:
+                    selectedSubjectNames[2],
                   subject_id:
-                    cbt_config
-                      ?.other_subject_ids?.[2],
+                    otherSubjectIdsSafe(
+                      cbt_config
+                    )[2],
                   question_count:
                     40,
                 },
@@ -932,43 +1004,67 @@ export async function POST(
    * ====================================================
    * CBT SECTIONS
    * ====================================================
+   *
+   * IMPORTANT:
+   *
+   * These now contain the REAL subject names.
+   *
+   * Example:
+   *
+   * Biology
+   * Chemistry
+   * Physics
+   *
+   * instead of:
+   *
+   * Subject 1
+   * Subject 2
+   * Subject 3
    */
+
+  const otherSubjectIds =
+    cbt_config
+      ?.other_subject_ids ??
+    [];
 
   const cbtSections =
     isSpecialCbt
-      ? [
+   ? [
           {
             key: 'english',
             label: 'English',
             start: 0,
             count: 60,
           },
+
           {
             key: 'subject_1',
-            label: 'Subject 1',
+            label:
+              selectedSubjectNames[0],
             start: 60,
             count: 40,
             subject_id:
-              cbt_config
-                ?.other_subject_ids?.[0],
+              otherSubjectIds[0],
           },
+
           {
             key: 'subject_2',
-            label: 'Subject 2',
+            label:
+              selectedSubjectNames[1],
             start: 100,
             count: 40,
             subject_id:
-              cbt_config
-                ?.other_subject_ids?.[1],
+              otherSubjectIds[1],
           },
+
           {
             key: 'subject_3',
-            label: 'Subject 3',
+            label:
+              selectedSubjectNames[2],
             start: 140,
             count: 40,
             subject_id:
-              cbt_config
-                ?.other_subject_ids?.[2],
+              otherSubjectIds[2],
           },
         ]
       : [];
@@ -989,10 +1085,6 @@ export async function POST(
     duration_seconds:
       attempt.duration_seconds,
 
-    /*
-     * Challenge information is returned,
-     * but the exam itself remains CBT.
-     */
     challenge:
       isChallenge
         ? {
@@ -1009,8 +1101,7 @@ export async function POST(
 
             total_duration_seconds:
               challengeRound
-                ?.duration_seconds 
-              ??
+                ?.duration_seconds ??
               120 * 60,
 
             remaining_seconds:
@@ -1032,6 +1123,14 @@ export async function POST(
 
     questions:
       orderedQuestions,
+
+    /*
+     * Send the real selected subject names
+     * to the frontend.
+     */
+
+    selected_subjects:
+      selectedSubjectNames,
 
     cbt:
       isSpecialCbt
@@ -1056,4 +1155,27 @@ export async function POST(
           }
         : null,
   });
+}
+
+/*
+ * ======================================================
+ * HELPER
+ * ======================================================
+ *
+ * Safely gets the three selected subject IDs.
+ */
+
+function otherSubjectIdsSafe(
+  cbtConfig:
+    | {
+        other_subject_ids?:
+          string[];
+      }
+    | undefined
+): string[] {
+  return (
+    cbtConfig
+      ?.other_subject_ids ??
+    []
+  );
 }
