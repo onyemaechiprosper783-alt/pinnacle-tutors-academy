@@ -55,7 +55,10 @@ export default function ResultsPage() {
     async function loadResults() {
       try {
         const response = await fetch(
-          `/api/exams/${params.attemptId}`
+          `/api/exams/${params.attemptId}`,
+          {
+            cache: 'no-store',
+          }
         );
 
         const result =
@@ -101,42 +104,86 @@ export default function ResultsPage() {
   const attempt =
     data?.attempt;
 
+  if (!attempt) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-slate-500">
+          {data?.message ??
+            'Result not found.'}
+        </p>
+
+        <Link
+          href="/dashboard"
+          className="mt-4 inline-block font-semibold text-emerald-700"
+        >
+          Back to Dashboard
+        </Link>
+      </div>
+    );
+  }
+
   /*
    * =====================================================
    * IDENTIFY UTME CHALLENGE
    * =====================================================
    *
-   * IMPORTANT:
+   * The challenge system may identify a challenge by:
    *
-   * UTME Challenge uses mode = "cbt".
+   * 1. mode = "utme_challenge"
    *
-   * The round_id inside config is what
-   * distinguishes it from a normal CBT.
+   * OR
+   *
+   * 2. mode = "cbt" + config.round_id
+   *
+   * We support BOTH so the results page matches the
+   * existing challenge records in the database.
    */
 
-  const roundId =
-    attempt?.config &&
-    typeof attempt.config === 'object' &&
-    'round_id' in attempt.config
+  const config =
+    attempt.config &&
+    typeof attempt.config === 'object'
       ? (attempt.config as {
           round_id?: string;
-        }).round_id
-      : undefined;
+          results_released?: boolean;
+        })
+      : {};
 
   const isUtmeChallenge =
-    attempt?.mode === 'cbt' &&
-    !!roundId;
+    attempt.mode === 'utme_challenge' ||
+    (
+      attempt.mode === 'cbt' &&
+      !!config.round_id
+    );
 
   /*
    * =====================================================
-   * UTME CHALLENGE — HIDE RESULTS
+   * RESULTS RELEASE STATUS
    * =====================================================
-   *
-   * Never show score, percentage, correct answers,
-   * ranking, or answer review to the student.
    */
 
-  if (isUtmeChallenge) {
+  const resultsReleased =
+    Boolean(
+      config.results_released
+    );
+
+  /*
+   * =====================================================
+   * HIDDEN UTME CHALLENGE RESULTS
+   * =====================================================
+   *
+   * IMPORTANT:
+   *
+   * A hidden challenge result is NOT a zero result.
+   *
+   * We return a completely separate screen and never
+   * render score, percentage, correct count, incorrect
+   * count, subject breakdown, answers or ranking.
+   */
+
+  if (
+    isUtmeChallenge &&
+    !resultsReleased
+  ) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10">
         <div className="rounded-2xl border border-emerald-200 bg-white p-8 text-center shadow-sm">
@@ -154,20 +201,17 @@ export default function ResultsPage() {
             submitted successfully.
           </p>
 
-          <p className="mt-3 leading-relaxed text-slate-600">
-            Your score and ranking are currently
-            hidden.
-          </p>
-
           <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
-            🏆 Results will be released by the
-            administrator.
+            🏆 Your results are currently
+            hidden.
           </div>
 
-          <p className="mt-4 text-sm text-slate-500">
-            Your official score will be calculated
-            out of 400 and made available when the
-            challenge results are released.
+          <p className="mt-4 text-sm leading-relaxed text-slate-500">
+            The administrator will release
+            the official challenge results.
+            Your score, subject breakdown and
+            ranking will appear here after
+            the results are released.
           </p>
 
           <Link
@@ -183,26 +227,9 @@ export default function ResultsPage() {
 
   /*
    * =====================================================
-   * NORMAL EXAM
+   * NORMAL EXAM OR RELEASED UTME CHALLENGE
    * =====================================================
    */
-
-  if (!attempt) {
-    return (
-      <div className="p-8 text-center">
-        <p className="text-slate-500">
-          Result not found.
-        </p>
-
-        <Link
-          href="/dashboard"
-          className="mt-4 inline-block font-semibold text-emerald-700"
-        >
-          Back to Dashboard
-        </Link>
-      </div>
-    );
-  }
 
   const questions =
     data?.questions ?? [];
@@ -217,22 +244,59 @@ export default function ResultsPage() {
         )
       : 0;
 
+  /*
+   * Challenge results are normally scored out
+   * of 400, while the regular result page can
+   * continue using the existing score field.
+   */
+
+  const challengeCorrect =
+    attempt.correct_count ?? 0;
+
+  const challengeTotal =
+    questions.length > 0
+      ? questions.length
+      : 180;
+
+  const challengePercentage =
+    isUtmeChallenge
+      ? Math.round(
+          (challengeCorrect /
+            challengeTotal) *
+            100
+        )
+      : null;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
 
       <h1 className="mb-1 text-2xl font-bold text-slate-900">
-        Your Result
+        {isUtmeChallenge
+          ? 'UTME Challenge Result'
+          : 'Your Result'}
       </h1>
 
       <p className="mb-6 capitalize text-slate-500">
-        {attempt.mode} exam · {minutes} min used
+        {isUtmeChallenge
+          ? 'UTME Challenge'
+          : `${attempt.mode} exam`}
+        {' · '}
+        {minutes} min used
       </p>
+
+      {/* =====================================================
+          SCORE CARDS
+          ===================================================== */}
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
 
         <Stat
           label="Score"
-          value={`${attempt.score ?? 0}%`}
+          value={
+            isUtmeChallenge
+              ? `${challengePercentage ?? 0}%`
+              : `${attempt.score ?? 0}%`
+          }
           tone="emerald"
         />
 
@@ -261,6 +325,10 @@ export default function ResultsPage() {
         />
 
       </div>
+
+      {/* =====================================================
+          SUBJECT BREAKDOWN
+          ===================================================== */}
 
       {Object.keys(breakdown).length > 0 && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
@@ -325,104 +393,117 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() =>
-          setShowReview(
-            (value) => !value
-          )
-        }
-        className="mb-4 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-emerald-700"
-      >
-        {showReview
-          ? 'Hide answer review'
-          : 'Review answers'}
-      </button>
+      {/* =====================================================
+          ANSWER REVIEW
+          ===================================================== */}
 
-      {showReview && (
-        <div className="space-y-4">
+      {questions.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              setShowReview(
+                (value) => !value
+              )
+            }
+            className="mb-4 w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-emerald-700"
+          >
+            {showReview
+              ? 'Hide answer review'
+              : 'Review answers'}
+          </button>
 
-          {questions.map(
-            (question, index) => (
+          {showReview && (
+            <div className="space-y-4">
 
-              <div
-                key={
-                  question.question_id
-                }
-                className="rounded-xl border border-slate-200 bg-white p-4"
-              >
+              {questions.map(
+                (
+                  question,
+                  index
+                ) => (
 
-                <p className="mb-2 text-sm font-semibold text-slate-800">
-
-                  {index + 1}.{' '}
-
-                  {
-                    question.question
-                      .question_text
-                  }
-
-                </p>
-
-                {(
-                  [
-                    'A',
-                    'B',
-                    'C',
-                    'D',
-                  ] as const
-                ).map((letter) => {
-
-                  const text =
-                    question
-                      .question[
-                      `option_${letter.toLowerCase()}` as
-                        | 'option_a'
-                        | 'option_b'
-                        | 'option_c'
-                        | 'option_d'
-                    ];
-
-                  const isCorrectAns =
-                    question.question
-                      .correct_answer ===
-                    letter;
-
-                  const wasSelected =
-                    question.selected_answer ===
-                    letter;
-
-                  return (
-                    <div
-                      key={letter}
-                      className={`mb-1 rounded-lg px-3 py-2 text-sm ${
-                        isCorrectAns
-                          ? 'bg-emerald-50 text-emerald-800'
-                          : wasSelected
-                            ? 'bg-red-50 text-red-700'
-                            : 'text-slate-600'
-                      }`}
-                    >
-                      {letter}. {text}
-                    </div>
-                  );
-                })}
-
-                {question.question
-                  .explanation && (
-                  <p className="mt-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-                    {
-                      question
-                        .question
-                        .explanation
+                  <div
+                    key={
+                      question.question_id
                     }
-                  </p>
-                )}
+                    className="rounded-xl border border-slate-200 bg-white p-4"
+                  >
 
-              </div>
-            )
+                    <p className="mb-2 text-sm font-semibold text-slate-800">
+                      {index + 1}.{' '}
+                      {
+                        question
+                          .question
+                          .question_text
+                      }
+                    </p>
+
+                    {(
+                      [
+                        'A',
+                        'B',
+                        'C',
+                        'D',
+                      ] as const
+                    ).map(
+                      (letter) => {
+
+                        const text =
+                          question
+                            .question[
+                            `option_${letter.toLowerCase()}` as
+                              | 'option_a'
+                              | 'option_b'
+                              | 'option_c'
+                              | 'option_d'
+                          ];
+
+                        const isCorrectAns =
+                          question
+                            .question
+                            .correct_answer ===
+                          letter;
+
+                        const wasSelected =
+                          question.selected_answer ===
+                          letter;
+
+                        return (
+                          <div
+                            key={letter}
+                            className={`mb-1 rounded-lg px-3 py-2 text-sm ${
+                              isCorrectAns
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : wasSelected
+                                ? 'bg-red-50 text-red-700'
+                                : 'text-slate-600'
+                            }`}
+                          >
+                            {letter}.{' '}
+                            {text}
+                          </div>
+                        );
+                      }
+                    )}
+
+                    {question.question
+                      .explanation && (
+                      <p className="mt-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+                        {
+                          question
+                            .question
+                            .explanation
+                        }
+                      </p>
+                    )}
+
+                  </div>
+                )
+              )}
+
+            </div>
           )}
-
-        </div>
+        </>
       )}
 
       <Link
