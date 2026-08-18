@@ -24,18 +24,22 @@ export async function GET(
    * =====================================================
    */
 
-  const { data: attempt, error: attemptError } =
-    await admin
-      .from('exam_attempts')
-      .select('*')
-      .eq('id', attemptId)
-      .single();
+  const {
+    data: attempt,
+    error: attemptError,
+  } = await admin
+    .from('exam_attempts')
+    .select('*')
+    .eq('id', attemptId)
+    .single();
 
   if (
     attemptError ||
     !attempt ||
-    (attempt.student_id !== caller.id &&
-      caller.role === 'student')
+    (
+      attempt.student_id !== caller.id &&
+      caller.role === 'student'
+    )
   ) {
     return NextResponse.json(
       { error: 'Attempt not found.' },
@@ -45,13 +49,8 @@ export async function GET(
 
   /*
    * =====================================================
-   * UTME CHALLENGE SECURITY
+   * CHALLENGE INFORMATION
    * =====================================================
-   *
-   * Students must NOT receive challenge results
-   * until the administrator releases them.
-   *
-   * Admins can still access everything normally.
    */
 
   const isChallenge =
@@ -62,14 +61,35 @@ export async function GET(
 
   const resultsReleased =
     Boolean(
-      (attempt.config as {
-        results_released?: boolean;
-      } | null)?.results_released
+      (
+        attempt.config as {
+          results_released?: boolean;
+        } | null
+      )?.results_released
     );
+
+  const isSubmitted =
+    attempt.status !== 'in_progress';
+
+  /*
+   * =====================================================
+   * IMPORTANT:
+   *
+   * DO NOT HIDE QUESTIONS WHILE THE CHALLENGE
+   * IS STILL IN PROGRESS.
+   *
+   * The student must receive the 180 questions
+   * in order to take the CBT.
+   *
+   * Challenge results are hidden ONLY after
+   * submission until the administrator releases them.
+   * =====================================================
+   */
 
   if (
     isChallenge &&
     isStudent &&
+    isSubmitted &&
     !resultsReleased
   ) {
     return NextResponse.json({
@@ -105,14 +125,39 @@ export async function GET(
    * =====================================================
    */
 
-  const { data: attemptQuestions } =
-    await admin
-      .from('attempt_questions')
-      .select(
-        'id, question_id, position, selected_answer, is_correct'
-      )
-      .eq('attempt_id', attemptId)
-      .order('position');
+  const {
+    data: attemptQuestions,
+    error: attemptQuestionsError,
+  } = await admin
+    .from('attempt_questions')
+    .select(
+      `
+        id,
+        question_id,
+        position,
+        selected_answer,
+        is_correct
+      `
+    )
+    .eq('attempt_id', attemptId)
+    .order('position', {
+      ascending: true,
+    });
+
+  if (attemptQuestionsError) {
+    console.error(
+      'Attempt questions load error:',
+      attemptQuestionsError
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          'Could not load exam questions.',
+      },
+      { status: 500 }
+    );
+  }
 
   const questionIds =
     (attemptQuestions ?? []).map(
@@ -121,33 +166,107 @@ export async function GET(
 
   /*
    * =====================================================
+   * MAKE SURE QUESTIONS EXIST
+   * =====================================================
+   */
+
+  if (questionIds.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          'No questions were found for this exam attempt.',
+      },
+      { status: 404 }
+    );
+  }
+
+  /*
+   * =====================================================
    * QUESTION DATA
    * =====================================================
    *
-   * Before submission:
-   *   Use questions_public so answers are hidden.
+   * While the exam is in progress:
+   *
+   *   questions_public
+   *
+   * is used so the correct answer is not exposed.
    *
    * After submission:
-   *   Normal exams can see the answer key.
+   *
+   *   questions
+   *
+   * can be used so results can include the answer key.
    */
 
-  const isSubmitted =
-    attempt.status !== 'in_progress';
+  const {
+    data: questions,
+    error: questionsError,
+  } = await admin
+    .from(
+      isSubmitted
+        ? 'questions'
+        : 'questions_public'
+    )
+    .select(
+      '*, subjects(name)'
+    )
+    .in(
+      'id',
+      questionIds
+    );
 
-  const { data: questions } =
-    await admin
-      .from(
-        isSubmitted
-          ? 'questions'
-          : 'questions_public'
-      )
-      .select('*, subjects(name)')
-      .in('id', questionIds);
+  if (questionsError) {
+    console.error(
+      'Question data load error:',
+      questionsError
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          'Could not load question data.',
+      },
+      { status: 500 }
+    );
+  }
+
+  if (
+    !questions ||
+    questions.length !==
+      questionIds.length
+  ) {
+    console.error(
+      'Question count mismatch:',
+      {
+        requested:
+          questionIds.length,
+        loaded:
+          questions?.length ?? 0,
+      }
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          'Some exam questions could not be loaded.',
+      },
+      { status: 500 }
+    );
+  }
+
+  /*
+   * =====================================================
+   * PRESERVE ATTEMPT QUESTION ORDER
+   * =====================================================
+   */
 
   const questionMap =
     new Map(
-      (questions ?? []).map(
-        (q) => [q.id, q]
+      questions.map(
+        (question) => [
+          question.id,
+          question,
+        ]
       )
     );
 
@@ -155,12 +274,34 @@ export async function GET(
     (attemptQuestions ?? []).map(
       (aq) => ({
         ...aq,
+
         question:
           questionMap.get(
             aq.question_id
           ),
       })
     );
+
+  /*
+   * =====================================================
+   * VERIFY EVERY QUESTION WAS FOUND
+   * =====================================================
+   */
+
+  const missingQuestion =
+    combined.some(
+      (aq) => !aq.question
+    );
+
+  if (missingQuestion) {
+    return NextResponse.json(
+      {
+        error:
+          'One or more exam questions could not be found.',
+      },
+      { status: 500 }
+    );
+  }
 
   /*
    * =====================================================
@@ -210,7 +351,29 @@ export async function GET(
 
   /*
    * =====================================================
-   * NORMAL RESULT
+   * CHALLENGE CONFIG
+   * =====================================================
+   */
+
+  const challengeConfig =
+    isChallenge
+      ? (
+          attempt.config as {
+            challenge?: {
+              participant_id?: string;
+              english_questions?: number;
+              lekki_headmaster_questions?: number;
+              additional_subject_questions?: number;
+              total_questions?: number;
+              locked?: boolean;
+            };
+          } | null
+        )?.challenge ?? null
+      : null;
+
+  /*
+   * =====================================================
+   * RESPONSE
    * =====================================================
    */
 
@@ -222,8 +385,15 @@ export async function GET(
     subject_breakdown:
       subjectBreakdown,
 
-    challenge: false,
+    challenge: isChallenge,
 
-    results_hidden: false,
+    results_hidden:
+      isChallenge &&
+      isStudent &&
+      isSubmitted &&
+      !resultsReleased,
+
+    challenge_config:
+      challengeConfig,
   });
 }
