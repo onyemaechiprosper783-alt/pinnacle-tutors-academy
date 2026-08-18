@@ -38,20 +38,15 @@ export async function GET(request: Request) {
       .from('utme_challenge_participants')
       .select(`
         id,
-        student_id,
         round_id,
-        selected_subject_ids,
-        status,
-        started_at,
-        submitted_at,
-        duration_seconds,
-        time_used_seconds,
-        total_questions,
-        correct_count,
-        incorrect_count,
-        unanswered_count,
-        score,
+        student_id,
         whatsapp_number,
+        selected_subject_ids,
+        exam_attempt_id,
+        score,
+        rank,
+        rewarded,
+        created_at,
         reward_given,
         reward_given_at
       `)
@@ -60,9 +55,8 @@ export async function GET(request: Request) {
         ascending: false,
         nullsFirst: false,
       })
-      .order('submitted_at', {
+      .order('created_at', {
         ascending: true,
-        nullsFirst: false,
       });
 
   if (participantsError) {
@@ -126,7 +120,7 @@ export async function GET(request: Request) {
 
   /*
    * =====================================================
-   * CREATE PROFILE LOOKUP
+   * PROFILE LOOKUP
    * =====================================================
    */
 
@@ -159,30 +153,59 @@ export async function GET(request: Request) {
     (participant, index) => {
       const currentScore = participant.score ?? 0;
 
-      let rank: number;
+      let calculatedRank: number;
 
       if (
         index > 0 &&
         previousScore !== null &&
         currentScore === previousScore
       ) {
-        rank = previousRank;
+        calculatedRank = previousRank;
       } else {
-        rank = index + 1;
+        calculatedRank = index + 1;
       }
 
       previousScore = currentScore;
-      previousRank = rank;
+      previousRank = calculatedRank;
 
       const profile = profileMap.get(
         participant.student_id
       );
 
       return {
-        ...participant,
-        rank,
+        id: participant.id,
+        round_id: participant.round_id,
+        student_id: participant.student_id,
+
         student_name:
           profile?.full_name || 'Unknown student',
+
+        whatsapp_number:
+          participant.whatsapp_number,
+
+        selected_subject_ids:
+          participant.selected_subject_ids,
+
+        exam_attempt_id:
+          participant.exam_attempt_id,
+
+        score:
+          participant.score,
+
+        rank:
+          calculatedRank,
+
+        rewarded:
+          participant.rewarded,
+
+        created_at:
+          participant.created_at,
+
+        reward_given:
+          participant.reward_given,
+
+        reward_given_at:
+          participant.reward_given_at,
       };
     }
   );
