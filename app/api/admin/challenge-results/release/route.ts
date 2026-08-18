@@ -23,8 +23,7 @@ export async function POST(
   ) {
     return NextResponse.json(
       {
-        error:
-          'Not authorized.',
+        error: 'Not authorized.',
       },
       {
         status: 403,
@@ -63,17 +62,56 @@ export async function POST(
 
   /*
    * =====================================================
+   * VERIFY ROUND EXISTS
+   * =====================================================
+   */
+
+  const {
+    data: round,
+    error: roundError,
+  } = await admin
+    .from('challenge_rounds')
+    .select(`
+      id,
+      title,
+      results_released
+    `)
+    .eq(
+      'id',
+      roundId
+    )
+    .single();
+
+  if (
+    roundError ||
+    !round
+  ) {
+    console.error(
+      'Challenge round lookup error:',
+      roundError
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          'Challenge round could not be found.',
+      },
+      {
+        status: 404,
+      }
+    );
+  }
+
+  /*
+   * =====================================================
    * LOAD CHALLENGE ATTEMPTS
    * =====================================================
    *
-   * Challenge attempts are stored as:
+   * Challenge attempts use:
    *
    *     mode = cbt
    *
-   * and identified by:
-   *
-   *     config.round_id
-   *
+   * and contain the round ID inside config.
    * =====================================================
    */
 
@@ -91,6 +129,7 @@ export async function POST(
       unanswered_count,
       total_questions,
       time_used_seconds,
+      submitted_at,
       status,
       config
     `)
@@ -118,7 +157,7 @@ export async function POST(
 
   /*
    * =====================================================
-   * FIND ATTEMPTS BELONGING TO THIS ROUND
+   * FIND ATTEMPTS FOR THIS ROUND
    * =====================================================
    */
 
@@ -126,41 +165,28 @@ export async function POST(
     (attempts ?? []).filter(
       (attempt) => {
         const config =
-          (attempt.config ??
-            {}) as {
+          (
+            attempt.config ??
+            {}
+          ) as {
             round_id?: string | null;
+
             challenge?: {
               round_id?: string | null;
             } | null;
           };
 
-        const configRoundId =
+        const attemptRoundId =
           config.round_id ??
-          config.challenge
-            ?.round_id ??
+          config.challenge?.round_id ??
           null;
 
         return (
-          configRoundId ===
+          attemptRoundId ===
           roundId
         );
       }
     );
-
-  if (
-    challengeAttempts.length ===
-    0
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          'No submitted challenge attempts were found for this round.',
-      },
-      {
-        status: 404,
-      }
-    );
-  }
 
   /*
    * =====================================================
@@ -182,7 +208,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          'No submitted challenge attempts were found yet.',
+          'No submitted challenge attempts were found for this round.',
       },
       {
         status: 400,
@@ -192,17 +218,58 @@ export async function POST(
 
   /*
    * =====================================================
-   * UPDATE ATTEMPT CONFIG
+   * RELEASE THE ROUND
    * =====================================================
    *
-   * We store:
+   * THIS IS THE IMPORTANT FIX.
    *
-   *     results_released: true
+   * The student leaderboard checks:
    *
-   * inside the attempt configuration.
+   *     challenge_rounds.results_released
    *
-   * The student results API uses this value
-   * to decide whether the result can be shown.
+   * Therefore we MUST update the round itself.
+   */
+
+  const {
+    error:
+      releaseRoundError,
+  } = await admin
+    .from('challenge_rounds')
+    .update({
+      results_released:
+        true,
+    })
+    .eq(
+      'id',
+      roundId
+    );
+
+  if (
+    releaseRoundError
+  ) {
+    console.error(
+      'Challenge round release error:',
+      releaseRoundError
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          'Could not release the challenge results.',
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+
+  /*
+   * =====================================================
+   * ALSO MARK ATTEMPT CONFIG AS RELEASED
+   * =====================================================
+   *
+   * This keeps compatibility with the existing
+   * attempt-results API.
    */
 
   for (
@@ -217,21 +284,24 @@ export async function POST(
         unknown
       >;
 
+    const existingChallenge =
+      (
+        existingConfig.challenge ??
+        {}
+      ) as Record<
+        string,
+        unknown
+      >;
+
     const updatedConfig = {
       ...existingConfig,
+
       results_released:
         true,
 
       challenge: {
-        ...(
-          (
-            existingConfig.challenge ??
-            {}
-          ) as Record<
-            string,
-            unknown
-          >
-        ),
+        ...existingChallenge,
+
         results_released:
           true,
       },
@@ -260,7 +330,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            'Could not release all challenge results.',
+            'The round was released, but some attempt results could not be updated.',
         },
         {
           status: 500,
@@ -273,9 +343,6 @@ export async function POST(
    * =====================================================
    * LOAD LEADERBOARD ENTRIES
    * =====================================================
-   *
-   * Existing leaderboard entries are created when
-   * the challenge is submitted.
    */
 
   const {
@@ -283,9 +350,7 @@ export async function POST(
     error:
       leaderboardLoadError,
   } = await admin
-    .from(
-      'leaderboard_entries'
-    )
+    .from('leaderboard_entries')
     .select(`
       id,
       attempt_id,
@@ -310,7 +375,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          'Challenge results were released, but the leaderboard could not be loaded.',
+          'Results were released, but the leaderboard could not be loaded.',
       },
       {
         status: 500,
@@ -320,16 +385,13 @@ export async function POST(
 
   /*
    * =====================================================
-   * BUILD RANKING
+   * SORT LEADERBOARD
    * =====================================================
    *
-   * Highest score ranks first.
+   * Highest score first.
    *
-   * If two students have the same score,
-   * the student who used less time ranks first.
-   *
-   * This gives the challenge a deterministic
-   * ranking system.
+   * If scores are equal:
+   * fastest submission first.
    */
 
   const sortedEntries =
@@ -349,7 +411,8 @@ export async function POST(
           );
 
         if (
-          scoreB !== scoreA
+          scoreA !==
+          scoreB
         ) {
           return (
             scoreB -
@@ -360,13 +423,13 @@ export async function POST(
         const timeA =
           Number(
             a.time_used_seconds ??
-              Number.MAX_SAFE_INTEGER
+            Number.MAX_SAFE_INTEGER
           );
 
         const timeB =
           Number(
             b.time_used_seconds ??
-              Number.MAX_SAFE_INTEGER
+            Number.MAX_SAFE_INTEGER
           );
 
         return (
@@ -378,9 +441,29 @@ export async function POST(
 
   /*
    * =====================================================
-   * SAVE RANKS
+   * CALCULATE AND SAVE RANKS
    * =====================================================
+   *
+   * Competition ranking:
+   *
+   * 400
+   * 400
+   * 390
+   *
+   * becomes:
+   *
+   * 1
+   * 1
+   * 3
    */
+
+  let previousScore:
+    number | null = null;
+
+  let previousTime:
+    number | null = null;
+
+  let previousRank = 0;
 
   for (
     let index = 0;
@@ -391,60 +474,44 @@ export async function POST(
     const entry =
       sortedEntries[index];
 
-    /*
-     * Competition ranking:
-     *
-     * 100 points
-     * 100 points
-     * 90 points
-     *
-     * ranks:
-     *
-     * 1
-     * 1
-     * 3
-     */
+    const score =
+      Number(
+        entry.score ?? 0
+      );
 
-    const previousEntry =
-      sortedEntries[
-        index - 1
-      ];
+    const time =
+      Number(
+        entry.time_used_seconds ??
+        Number.MAX_SAFE_INTEGER
+      );
 
     let rank =
       index + 1;
 
     if (
-      previousEntry &&
-      Number(
-        previousEntry.score ??
-          0
-      ) ===
-        Number(
-          entry.score ??
-            0
-        ) &&
-      Number(
-        previousEntry.time_used_seconds ??
-          0
-      ) ===
-        Number(
-          entry.time_used_seconds ??
-            0
-        )
+      previousScore !== null &&
+      previousTime !== null &&
+      score ===
+        previousScore &&
+      time ===
+        previousTime
     ) {
-      /*
-       * Same score and same time:
-       * same rank.
-       */
-
-      const previousRank =
-        index > 0
-          ? index
-          : 1;
-
       rank =
         previousRank;
     }
+
+    previousScore =
+      score;
+
+    previousTime =
+      time;
+
+    previousRank =
+      rank;
+
+    /*
+     * Save rank to leaderboard_entries.
+     */
 
     const {
       error:
@@ -477,59 +544,11 @@ export async function POST(
         }
       );
     }
-  }
 
-  /*
-   * =====================================================
-   * UPDATE PARTICIPANT RANKS
-   * =====================================================
-   *
-   * The student dashboard may use the
-   * utme_challenge_participants table instead
-   * of leaderboard_entries.
-   *
-   * Therefore we synchronize the rank there too.
-   */
-
-  for (
-    let index = 0;
-    index <
-    sortedEntries.length;
-    index++
-  ) {
-    const entry =
-      sortedEntries[index];
-
-    const previousEntry =
-      sortedEntries[
-        index - 1
-      ];
-
-    let rank =
-      index + 1;
-
-    if (
-      previousEntry &&
-      Number(
-        previousEntry.score ??
-          0
-      ) ===
-        Number(
-          entry.score ??
-            0
-        ) &&
-      Number(
-        previousEntry.time_used_seconds ??
-          0
-        ) ===
-        Number(
-          entry.time_used_seconds ??
-            0
-        )
-    ) {
-      rank =
-        index;
-    }
+    /*
+     * Save the same rank to the challenge
+     * participant record.
+     */
 
     const {
       error:
@@ -553,19 +572,15 @@ export async function POST(
     if (
       participantRankError
     ) {
-      /*
-       * Do not fail the entire release if the
-       * participant table does not contain a
-       * matching row.
-       *
-       * The leaderboard_entries rank has already
-       * been saved.
-       */
-
       console.error(
         'Participant rank update error:',
         participantRankError
       );
+
+      /*
+       * Do not stop the release because the
+       * leaderboard_entries rank was saved.
+       */
     }
   }
 
@@ -581,16 +596,19 @@ export async function POST(
     round_id:
       roundId,
 
+    title:
+      round.title,
+
     results_released:
       true,
 
-    participants:
+    submitted_attempts:
       submittedAttempts.length,
 
     leaderboard_entries:
       sortedEntries.length,
 
     message:
-      'Challenge results have been released and leaderboard ranks have been updated.',
+      'Challenge results have been released successfully. Student scores and rankings are now available.',
   });
 }
