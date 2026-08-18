@@ -98,19 +98,49 @@ export default function ResultsPage() {
     );
   }
 
+  const attempt =
+    data?.attempt;
+
   /*
    * =====================================================
-   * UTME CHALLENGE — RESULTS HIDDEN
+   * IDENTIFY UTME CHALLENGE
    * =====================================================
+   *
+   * IMPORTANT:
+   *
+   * UTME Challenge uses mode = "cbt".
+   *
+   * The round_id inside config is what
+   * distinguishes it from a normal CBT.
    */
 
-  if (
-    data?.challenge &&
-    data?.results_hidden
-  ) {
+  const roundId =
+    attempt?.config &&
+    typeof attempt.config === 'object' &&
+    'round_id' in attempt.config
+      ? (attempt.config as {
+          round_id?: string;
+        }).round_id
+      : undefined;
+
+  const isUtmeChallenge =
+    attempt?.mode === 'cbt' &&
+    !!roundId;
+
+  /*
+   * =====================================================
+   * UTME CHALLENGE — HIDE RESULTS
+   * =====================================================
+   *
+   * Never show score, percentage, correct answers,
+   * ranking, or answer review to the student.
+   */
+
+  if (isUtmeChallenge) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10">
         <div className="rounded-2xl border border-emerald-200 bg-white p-8 text-center shadow-sm">
+
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">
             ✓
           </div>
@@ -124,18 +154,21 @@ export default function ResultsPage() {
             submitted successfully.
           </p>
 
-          <p className="mt-2 leading-relaxed text-slate-600">
+          <p className="mt-3 leading-relaxed text-slate-600">
             Your score and ranking are currently
-            hidden. Results will become available
-            when the challenge administrator
-            releases them.
+            hidden.
           </p>
 
-          <div className="mt-6 rounded-xl bg-amber-50 p-4 text-sm font-medium text-amber-800">
-            🏆 Keep an eye on the challenge
-            leaderboard for the official result
-            release.
+          <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+            🏆 Results will be released by the
+            administrator.
           </div>
+
+          <p className="mt-4 text-sm text-slate-500">
+            Your official score will be calculated
+            out of 400 and made available when the
+            challenge results are released.
+          </p>
 
           <Link
             href="/dashboard"
@@ -148,8 +181,11 @@ export default function ResultsPage() {
     );
   }
 
-  const attempt =
-    data?.attempt;
+  /*
+   * =====================================================
+   * NORMAL EXAM
+   * =====================================================
+   */
 
   if (!attempt) {
     return (
@@ -181,14 +217,9 @@ export default function ResultsPage() {
         )
       : 0;
 
-  /*
-   * =====================================================
-   * NORMAL EXAM RESULTS
-   * =====================================================
-   */
-
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
+
       <h1 className="mb-1 text-2xl font-bold text-slate-900">
         Your Result
       </h1>
@@ -198,6 +229,7 @@ export default function ResultsPage() {
       </p>
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+
         <Stat
           label="Score"
           value={`${attempt.score ?? 0}%`}
@@ -227,15 +259,18 @@ export default function ResultsPage() {
           }
           tone="slate"
         />
+
       </div>
 
       {Object.keys(breakdown).length > 0 && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
+
           <h2 className="mb-3 font-semibold text-slate-800">
             Subject Breakdown
           </h2>
 
           <div className="space-y-3">
+
             {Object.entries(
               breakdown
             ).map(
@@ -243,6 +278,7 @@ export default function ResultsPage() {
                 subject,
                 section,
               ]) => {
+
                 const pct =
                   section.total
                     ? Math.round(
@@ -254,7 +290,9 @@ export default function ResultsPage() {
 
                 return (
                   <div key={subject}>
+
                     <div className="mb-1 flex justify-between text-sm">
+
                       <span className="font-medium text-slate-700">
                         {subject}
                       </span>
@@ -264,20 +302,25 @@ export default function ResultsPage() {
                         {section.total} (
                         {pct}%)
                       </span>
+
                     </div>
 
                     <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+
                       <div
                         className="h-full bg-emerald-500"
                         style={{
                           width: `${pct}%`,
                         }}
                       />
+
                     </div>
+
                   </div>
                 );
               }
             )}
+
           </div>
         </div>
       )}
@@ -298,20 +341,26 @@ export default function ResultsPage() {
 
       {showReview && (
         <div className="space-y-4">
+
           {questions.map(
             (question, index) => (
+
               <div
                 key={
                   question.question_id
                 }
                 className="rounded-xl border border-slate-200 bg-white p-4"
               >
+
                 <p className="mb-2 text-sm font-semibold text-slate-800">
+
                   {index + 1}.{' '}
+
                   {
                     question.question
                       .question_text
                   }
+
                 </p>
 
                 {(
@@ -322,6 +371,7 @@ export default function ResultsPage() {
                     'D',
                   ] as const
                 ).map((letter) => {
+
                   const text =
                     question
                       .question[
@@ -367,9 +417,11 @@ export default function ResultsPage() {
                     }
                   </p>
                 )}
+
               </div>
             )
           )}
+
         </div>
       )}
 
@@ -379,6 +431,7 @@ export default function ResultsPage() {
       >
         Back to Dashboard
       </Link>
+
     </div>
   );
 }
@@ -395,6 +448,7 @@ function Stat({
     | 'red'
     | 'slate';
 }) {
+
   const colors = {
     emerald: 'text-emerald-700',
     red: 'text-red-700',
@@ -403,6 +457,7 @@ function Stat({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
+
       <p
         className={`text-2xl font-bold ${colors[tone]}`}
       >
@@ -412,6 +467,7 @@ function Stat({
       <p className="text-xs font-medium text-slate-500">
         {label}
       </p>
+
     </div>
   );
 }
