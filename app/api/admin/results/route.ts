@@ -29,18 +29,6 @@ export async function GET(request: Request) {
    * =====================================================
    * LOAD EXAM ATTEMPTS
    * =====================================================
-   *
-   * IMPORTANT:
-   *
-   * UTME Challenge attempts are stored with:
-   *
-   *     mode = 'cbt'
-   *
-   * They are identified by:
-   *
-   *     config.round_id
-   *
-   * Therefore we load the config as well.
    */
 
   let query = admin
@@ -66,15 +54,6 @@ export async function GET(request: Request) {
       { ascending: false }
     )
     .limit(100);
-
-  /*
-   * Normal mode filter.
-   *
-   * NOTE:
-   *
-   * A UTME Challenge is CBT mode, so the
-   * challenge detection happens below.
-   */
 
   if (mode) {
     query = query.eq(
@@ -105,6 +84,106 @@ export async function GET(request: Request) {
 
   /*
    * =====================================================
+   * FIND CHALLENGE ROUND IDS
+   * =====================================================
+   */
+
+  const challengeRoundIds =
+    Array.from(
+      new Set(
+        (attempts ?? [])
+          .map((attempt) => {
+            const config =
+              (attempt.config ??
+                {}) as {
+                round_id?: string | null;
+                challenge?: {
+                  round_id?: string | null;
+                } | null;
+              };
+
+            return (
+              config.round_id ??
+              config.challenge
+                ?.round_id ??
+              null
+            );
+          })
+          .filter(
+            (
+              id
+            ): id is string =>
+              !!id
+          )
+      )
+    );
+
+  /*
+   * =====================================================
+   * LOAD CHALLENGE ROUNDS
+   * =====================================================
+   *
+   * challenge_rounds.results_released is the
+   * authoritative source for whether students
+   * can see their results.
+   */
+
+  let rounds: {
+    id: string;
+    title: string | null;
+    results_released: boolean;
+  }[] = [];
+
+  if (
+    challengeRoundIds.length > 0
+  ) {
+    const {
+      data: roundData,
+      error:
+        roundError,
+    } = await admin
+      .from('challenge_rounds')
+      .select(`
+        id,
+        title,
+        results_released
+      `)
+      .in(
+        'id',
+        challengeRoundIds
+      );
+
+    if (roundError) {
+      console.error(
+        'Challenge rounds query error:',
+        roundError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            'Could not load challenge information.',
+        },
+        { status: 500 }
+      );
+    }
+
+    rounds =
+      roundData ?? [];
+  }
+
+  const roundMap =
+    new Map(
+      rounds.map(
+        (round) => [
+          round.id,
+          round,
+        ]
+      )
+    );
+
+  /*
+   * =====================================================
    * FORMAT RESULTS
    * =====================================================
    */
@@ -116,6 +195,7 @@ export async function GET(request: Request) {
           (attempt.config ??
             {}) as {
             round_id?: string | null;
+
             challenge?: {
               is_challenge?: boolean;
               round_id?: string | null;
@@ -129,20 +209,21 @@ export async function GET(request: Request) {
             ?.round_id ??
           null;
 
-        /*
-         * Challenge identification:
-         *
-         * mode = cbt
-         * AND round_id exists
-         */
-
         const isChallenge =
           attempt.mode ===
             'cbt' &&
           !!roundId;
 
+        const round =
+          roundId
+            ? roundMap.get(
+                roundId
+              )
+            : null;
+
         return {
-          id: attempt.id,
+          id:
+            attempt.id,
 
           student_id:
             attempt.student_id,
@@ -202,6 +283,7 @@ export async function GET(request: Request) {
           challenge_title:
             isChallenge
               ? (
+                  round?.title ??
                   config.challenge
                     ?.title ??
                   null
@@ -209,21 +291,17 @@ export async function GET(request: Request) {
               : null,
 
           /*
-           * Results should remain hidden from
-           * students, but administrators need
-           * the information required to manage
-           * the result-release process.
+           * IMPORTANT:
+           *
+           * Read release status from
+           * challenge_rounds.
            */
 
           results_released:
             isChallenge
               ? Boolean(
-                  (
-                    config as {
-                      results_released?: boolean;
-                    }
-                  )
-                    .results_released
+                  round
+                    ?.results_released
                 )
               : true,
         };
