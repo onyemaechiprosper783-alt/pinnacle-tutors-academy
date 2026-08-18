@@ -18,6 +18,7 @@ interface Round {
 interface Subject {
   id: string;
   name: string;
+  exam_types?: string[];
 }
 
 export default function ChallengeLobbyPage() {
@@ -25,29 +26,22 @@ export default function ChallengeLobbyPage() {
 
   const [rounds, setRounds] = useState<Round[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-
   const [selectedRound, setSelectedRound] =
     useState<Round | null>(null);
-
   const [selectedSubjects, setSelectedSubjects] =
     useState<string[]>([]);
-
   const [whatsappNumber, setWhatsappNumber] =
     useState('');
-
   const [loadingRounds, setLoadingRounds] =
     useState(true);
-
-  const [joining, setJoining] =
-    useState(false);
-
-  const [error, setError] =
-    useState('');
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     async function loadChallengeData() {
       try {
         setLoadingRounds(true);
+        setError('');
 
         const [roundsRes, subjectsRes] =
           await Promise.all([
@@ -81,10 +75,15 @@ export default function ChallengeLobbyPage() {
             : []
         );
 
-        setSubjects(
+        const allSubjects: Subject[] =
           Array.isArray(subjectsData)
             ? subjectsData
-            : subjectsData.subjects ?? []
+            : subjectsData.subjects ?? [];
+
+        setSubjects(
+          allSubjects.filter((subject) =>
+            subject.exam_types?.includes('jamb')
+          )
         );
       } catch (err) {
         setError(
@@ -160,10 +159,8 @@ export default function ChallengeLobbyPage() {
           body: JSON.stringify({
             round_id:
               selectedRound.id,
-
             selected_subject_ids:
               selectedSubjects,
-
             whatsapp_number:
               whatsappNumber.trim(),
           }),
@@ -214,8 +211,8 @@ export default function ChallengeLobbyPage() {
       </h1>
 
       <p className="mb-6 text-slate-500">
-        Compete against other students. Your
-        best score goes on the leaderboard.
+        Compete against other students. Your best
+        score goes on the leaderboard.
       </p>
 
       {error && (
@@ -262,8 +259,7 @@ export default function ChallengeLobbyPage() {
                         {round.question_count} questions
                         {' · '}
                         {Math.round(
-                          round.duration_seconds /
-                            60
+                          round.duration_seconds / 60
                         )}{' '}
                         minutes
                         {' · '}
@@ -297,43 +293,48 @@ export default function ChallengeLobbyPage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {subjects.map((subject) => {
-                  const selected =
-                    selectedSubjects.includes(
-                      subject.id
+              {subjects.length === 0 ? (
+                <div className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+                  No JAMB subjects are currently
+                  available.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {subjects.map((subject) => {
+                    const selected =
+                      selectedSubjects.includes(
+                        subject.id
+                      );
+
+                    return (
+                      <button
+                        key={subject.id}
+                        type="button"
+                        onClick={() =>
+                          toggleSubject(
+                            subject.id
+                          )
+                        }
+                        className={`rounded-xl border p-3 text-left transition ${
+                          selected
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">
+                            {subject.name}
+                          </span>
+
+                          <span className="text-sm">
+                            {selected ? '✓' : ''}
+                          </span>
+                        </div>
+                      </button>
                     );
-
-                  return (
-                    <button
-                      key={subject.id}
-                      type="button"
-                      onClick={() =>
-                        toggleSubject(
-                          subject.id
-                        )
-                      }
-                      className={`rounded-xl border p-3 text-left transition ${
-                        selected
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">
-                          {subject.name}
-                        </span>
-
-                        <span className="text-sm">
-                          {selected
-                            ? '✓'
-                            : ''}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                  })}
+                </div>
+              )}
 
               <div>
                 <label
@@ -359,8 +360,8 @@ export default function ChallengeLobbyPage() {
 
               <div className="flex items-center justify-between border-t border-slate-100 pt-4">
                 <p className="text-sm text-slate-500">
-                  {selectedSubjects.length}/3
-                  subjects selected
+                  {selectedSubjects.length}/3 subjects
+                  selected
                 </p>
 
                 <Button
