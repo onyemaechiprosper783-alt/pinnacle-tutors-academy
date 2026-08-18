@@ -30,38 +30,19 @@ const ENGLISH_SUBJECT_ID =
 const LEKKI_HEADMASTER_SUBJECT_ID =
   '3bca9d00-18fd-4064-b3ac-41da6e7eefa6';
 
-const CBT_SECTIONS = [
-  {
-    key: 'english',
-    name: 'English',
-    count: 60,
-  },
-  {
-    key: 'biology',
-    name: 'Biology',
-    count: 40,
-  },
-  {
-    key: 'chemistry',
-    name: 'Chemistry',
-    count: 40,
-  },
-  {
-    key: 'physics',
-    name: 'Physics',
-    count: 40,
-  },
-] as const;
-
-type CbtSectionKey =
-  (typeof CBT_SECTIONS)[number]['key'];
-
 type QuestionWithSubject =
   QuestionPublic & {
     subject_id?: string;
     subject_name?: string;
     subject?: string;
   };
+
+interface CbtSection {
+  key: string;
+  name: string;
+  count: number;
+  questions: QuestionWithSubject[];
+}
 
 export function ExamRunner({
   attemptId,
@@ -95,289 +76,256 @@ export function ExamRunner({
     useState(false);
 
   const [activeSection, setActiveSection] =
-    useState<CbtSectionKey>('english');
+    useState(0);
 
   /*
    * =====================================================
    * BUILD CBT SECTIONS
    * =====================================================
    *
-   * IMPORTANT:
+   * UTME CHALLENGE:
    *
-   * Normal JAMB CBT and UTME Challenge both use:
+   * 50 English
+   * 10 Lekki Headmaster
+   * 40 Student Subject 1
+   * 40 Student Subject 2
+   * 40 Student Subject 3
    *
-   *     mode = "cbt"
+   * TOTAL = 180
    *
-   * A UTME Challenge is identified separately by the
-   * attempt's round_id.
-   *
-   * Therefore we DO NOT create a new mode such as:
-   *
-   *     mode = "utme_challenge"
-   *
-   * The same CBT runner handles both.
-   *
-   * Expected CBT structure:
-   *
-   * English     = 60
-   * Biology     = 40
-   * Chemistry   = 40
-   * Physics     = 40
-   *
-   * Total       = 180
+   * The three additional subjects are NOT hard-coded.
+   * They come from the student's selected CBT paper.
    */
 
-  const cbtQuestions = useMemo(() => {
+  const cbtSections = useMemo<
+    CbtSection[]
+  >(() => {
     if (mode !== 'cbt') {
-      return null;
+      return [];
     }
 
     const typedQuestions =
       questions as QuestionWithSubject[];
 
-    /*
-     * If there are no questions at all, return empty
-     * sections instead of crashing.
-     */
-
     if (typedQuestions.length === 0) {
-      return {
-        english: [],
-        biology: [],
-        chemistry: [],
-        physics: [],
-      };
+      return [];
     }
 
-    const getSubjectName = (
-      question: QuestionWithSubject
-    ) => {
-      return (
-        question.subject_name ??
-        question.subject ??
-        ''
-      )
-        .toString()
-        .toLowerCase()
-        .trim();
-    };
-
     /*
      * -----------------------------------------------------
-     * TRY SUBJECT-BASED GROUPING FIRST
+     * ENGLISH + LEKKI HEADMASTER
      * -----------------------------------------------------
+     *
+     * They occupy the first 60 questions in the locked
+     * UTME Challenge paper.
      */
 
-    const english =
+    const englishQuestions =
       typedQuestions.filter(
         (question) =>
           question.subject_id ===
-            ENGLISH_SUBJECT_ID ||
-          question.subject_id ===
-            LEKKI_HEADMASTER_SUBJECT_ID ||
-          getSubjectName(question).includes(
-            'english'
-          ) ||
-          getSubjectName(question).includes(
-            'lekki headmaster'
-          )
+          ENGLISH_SUBJECT_ID
       );
 
-    const biology =
-      typedQuestions.filter((question) => {
-        const name =
-          getSubjectName(question);
-
-        return (
-          name.includes('biology') &&
-          question.subject_id !==
-            ENGLISH_SUBJECT_ID &&
-          question.subject_id !==
-            LEKKI_HEADMASTER_SUBJECT_ID
-        );
-      });
-
-    const chemistry =
-      typedQuestions.filter((question) => {
-        const name =
-          getSubjectName(question);
-
-        return (
-          name.includes('chemistry') &&
-          question.subject_id !==
-            ENGLISH_SUBJECT_ID &&
-          question.subject_id !==
-            LEKKI_HEADMASTER_SUBJECT_ID
-        );
-      });
-
-    const physics =
-      typedQuestions.filter((question) => {
-        const name =
-          getSubjectName(question);
-
-        return (
-          name.includes('physics') &&
-          question.subject_id !==
-            ENGLISH_SUBJECT_ID &&
-          question.subject_id !==
-            LEKKI_HEADMASTER_SUBJECT_ID
-        );
-      });
-
-    /*
-     * If all four sections were found correctly,
-     * use them.
-     *
-     * We require the expected minimum counts so that
-     * an incomplete subject grouping does not create
-     * the "No questions loaded for this section"
-     * problem.
-     */
-
-    if (
-      english.length >= 60 &&
-      biology.length >= 40 &&
-      chemistry.length >= 40 &&
-      physics.length >= 40
-    ) {
-      return {
-        english: english.slice(0, 60),
-        biology: biology.slice(0, 40),
-        chemistry: chemistry.slice(0, 40),
-        physics: physics.slice(0, 40),
-      };
-    }
+    const lekkiQuestions =
+      typedQuestions.filter(
+        (question) =>
+          question.subject_id ===
+          LEKKI_HEADMASTER_SUBJECT_ID
+      );
 
     /*
      * -----------------------------------------------------
-     * FALLBACK 1 — GROUP BY SUBJECT ID
+     * FIND THE THREE STUDENT SUBJECTS
      * -----------------------------------------------------
-     *
-     * Some API responses may contain subject_id but
-     * not subject_name.
      */
 
-    const groups = new Map<
-      string,
-      QuestionWithSubject[]
-    >();
+    const subjectGroups =
+      new Map<
+        string,
+        QuestionWithSubject[]
+      >();
 
     for (const question of typedQuestions) {
-      if (!question.subject_id) {
+      const subjectId =
+        question.subject_id;
+
+      if (
+        !subjectId ||
+        subjectId ===
+          ENGLISH_SUBJECT_ID ||
+        subjectId ===
+          LEKKI_HEADMASTER_SUBJECT_ID
+      ) {
         continue;
       }
 
       const existing =
-        groups.get(question.subject_id) ?? [];
+        subjectGroups.get(subjectId) ??
+        [];
 
       existing.push(question);
 
-      groups.set(
-        question.subject_id,
+      subjectGroups.set(
+        subjectId,
         existing
       );
     }
 
-    const subjectGroups =
-      Array.from(groups.values());
-
     /*
-     * Find groups large enough to represent the
-     * expected sections.
+     * The API locks the paper in this order:
+     *
+     * English
+     * Lekki Headmaster
+     * Student Subject 1
+     * Student Subject 2
+     * Student Subject 3
+     *
+     * We preserve the order in which the subject groups
+     * first appear in the returned question list.
      */
 
-    const possibleEnglish =
-      subjectGroups.find(
-        (group) => group.length >= 60
-      );
+    const orderedSubjectIds: string[] = [];
 
-    const otherGroups =
-      subjectGroups.filter(
-        (group) => group !== possibleEnglish
-      );
+    for (const question of typedQuestions) {
+      const subjectId =
+        question.subject_id;
 
-    const possibleBiology =
-      otherGroups.find(
-        (group) => group.length >= 40
-      );
+      if (
+        !subjectId ||
+        subjectId ===
+          ENGLISH_SUBJECT_ID ||
+        subjectId ===
+          LEKKI_HEADMASTER_SUBJECT_ID
+      ) {
+        continue;
+      }
 
-    const remainingAfterBiology =
-      otherGroups.filter(
-        (group) => group !== possibleBiology
-      );
+      if (
+        !orderedSubjectIds.includes(
+          subjectId
+        )
+      ) {
+        orderedSubjectIds.push(
+          subjectId
+        );
+      }
+    }
 
-    const possibleChemistry =
-      remainingAfterBiology.find(
-        (group) => group.length >= 40
-      );
+    const additionalSubjects =
+      orderedSubjectIds
+        .slice(0, 3)
+        .map((subjectId) => {
+          const grouped =
+            subjectGroups.get(
+              subjectId
+            ) ?? [];
 
-    const possiblePhysics =
-      remainingAfterBiology.find(
-        (group) =>
-          group !== possibleChemistry &&
-          group.length >= 40
-      );
+          const first =
+            grouped[0];
+
+          const name =
+            first?.subject_name ??
+            first?.subject ??
+            `Subject ${orderedSubjectIds.indexOf(subjectId) + 1}`;
+
+          return {
+            subjectId,
+            name: String(name),
+            questions:
+              grouped.slice(0, 40),
+          };
+        });
+
+    /*
+     * -----------------------------------------------------
+     * FALLBACK FOR MISSING SUBJECT METADATA
+     * -----------------------------------------------------
+     *
+     * The challenge API already creates the questions in
+     * the correct order. If subject metadata is missing,
+     * use the locked 180-question order instead of showing
+     * "No questions loaded".
+     */
 
     if (
-      possibleEnglish &&
-      possibleBiology &&
-      possibleChemistry &&
-      possiblePhysics
+      englishQuestions.length !== 50 ||
+      lekkiQuestions.length !== 10 ||
+      additionalSubjects.length !== 3
     ) {
-      return {
-        english:
-          possibleEnglish.slice(0, 60),
-
-        biology:
-          possibleBiology.slice(0, 40),
-
-        chemistry:
-          possibleChemistry.slice(0, 40),
-
-        physics:
-          possiblePhysics.slice(0, 40),
-      };
+      return [
+        {
+          key: 'english',
+          name: 'English',
+          count: 60,
+          questions:
+            typedQuestions.slice(0, 60),
+        },
+        {
+          key: 'subject_1',
+          name: 'Subject 1',
+          count: 40,
+          questions:
+            typedQuestions.slice(60, 100),
+        },
+        {
+          key: 'subject_2',
+          name: 'Subject 2',
+          count: 40,
+          questions:
+            typedQuestions.slice(100, 140),
+        },
+        {
+          key: 'subject_3',
+          name: 'Subject 3',
+          count: 40,
+          questions:
+            typedQuestions.slice(140, 180),
+        },
+      ];
     }
 
     /*
      * -----------------------------------------------------
-     * FALLBACK 2 — EXPECTED CBT ORDER
+     * NORMAL CORRECT CBT STRUCTURE
      * -----------------------------------------------------
-     *
-     * If the API did not return enough subject metadata,
-     * use the known 180-question CBT structure.
-     *
-     * This prevents the UI from becoming stuck on the
-     * English tab simply because subject metadata was
-     * unavailable.
-     *
-     * Expected order:
-     *
-     * 0   - 59   = English
-     * 60  - 99   = Biology
-     * 100 - 139  = Chemistry
-     * 140 - 179  = Physics
      */
 
-    return {
-      english: typedQuestions.slice(0, 60),
-
-      biology: typedQuestions.slice(
-        60,
-        100
-      ),
-
-      chemistry: typedQuestions.slice(
-        100,
-        140
-      ),
-
-      physics: typedQuestions.slice(
-        140,
-        180
-      ),
-    };
+    return [
+      {
+        key: 'english',
+        name: 'English',
+        count: 60,
+        questions: [
+          ...englishQuestions.slice(0, 50),
+          ...lekkiQuestions.slice(0, 10),
+        ],
+      },
+      {
+        key: 'subject_1',
+        name:
+          additionalSubjects[0].name,
+        count: 40,
+        questions:
+          additionalSubjects[0].questions,
+      },
+      {
+        key: 'subject_2',
+        name:
+          additionalSubjects[1].name,
+        count: 40,
+        questions:
+          additionalSubjects[1].questions,
+      },
+      {
+        key: 'subject_3',
+        name:
+          additionalSubjects[2].name,
+        count: 40,
+        questions:
+          additionalSubjects[2].questions,
+      },
+    ];
   }, [questions, mode]);
 
   /*
@@ -386,13 +334,15 @@ export function ExamRunner({
    * =====================================================
    */
 
-  const sectionQuestions: QuestionPublic[] =
-    mode === 'cbt' && cbtQuestions
-      ? cbtQuestions[activeSection]
-      : questions;
+  const sectionQuestions: QuestionWithSubject[] =
+    mode === 'cbt'
+      ? cbtSections[
+          activeSection
+        ]?.questions ?? []
+      : (questions as QuestionWithSubject[]);
 
   /*
-   * Keep the current index safe if the section changes.
+   * Keep the question index inside the current section.
    */
 
   const safeCurrentIndex =
@@ -470,21 +420,6 @@ export function ExamRunner({
             );
           }
 
-          /*
-           * IMPORTANT:
-           *
-           * We always go to the results route after
-           * submission.
-           *
-           * The results API/page determines whether
-           * this is:
-           *
-           * - normal CBT
-           * - UTME Challenge
-           *
-           * UTME Challenge results are hidden there.
-           */
-
           router.push(
             `/results/${attemptId}`
           );
@@ -508,12 +443,6 @@ export function ExamRunner({
    * =====================================================
    * TIMER
    * =====================================================
-   *
-   * The start-exam system supplies the duration.
-   *
-   * For a UTME Challenge this must be the remaining
-   * challenge time, not a newly-created timer for every
-   * subject.
    */
 
   const timer =
@@ -542,14 +471,6 @@ export function ExamRunner({
     ) {
       return;
     }
-
-    /*
-     * Practice mode locks the question after
-     * feedback is displayed.
-     *
-     * CBT and UTME Challenge never reveal answers
-     * while the exam is running.
-     */
 
     if (
       mode === 'practice' &&
@@ -594,10 +515,6 @@ export function ExamRunner({
             'Could not save answer.'
         );
       }
-
-      /*
-       * Only practice mode gets immediate feedback.
-       */
 
       if (
         mode === 'practice' &&
@@ -657,10 +574,10 @@ export function ExamRunner({
   }
 
   function changeSection(
-    section: CbtSectionKey
+    sectionIndex: number
   ) {
     setActiveSection(
-      section
+      sectionIndex
     );
 
     setCurrentIndex(0);
@@ -672,235 +589,31 @@ export function ExamRunner({
           currentQuestion.id
         ]
       : undefined;
-
-  /*
-   * =====================================================
-   * NO QUESTIONS
-   * =====================================================
-   */
-
-  if (!currentQuestion) {
-    return (
-      <div className="mx-auto max-w-xl p-6">
-        <div className="rounded-2xl bg-amber-50 p-6 text-center text-amber-800">
-          <h2 className="text-lg font-bold">
-            No questions loaded for
-            this section.
-          </h2>
-
-          <p className="mt-2 text-sm">
-            The challenge could not load
-            the questions for this section.
-            Please return to the challenge
-            and try again.
-          </p>
-
-          <button
-            type="button"
-            onClick={() =>
-              router.back()
-            }
-            className="mt-5 rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white"
-          >
-            Go Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /*
-   * =====================================================
-   * EXAM UI
-   * =====================================================
-   */
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
-
-        {/* TOP BAR */}
-
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-slate-300">
-            JAMB CBT
-          </div>
-
-          {durationSeconds ? (
-            <div
-              className={`rounded-full px-4 py-2 text-sm font-bold ${
-                timer.isLow
-                  ? 'bg-red-600 text-white'
-                  : 'bg-emerald-600 text-white'
-              }`}
-            >
-              ⏱ {timer.display}
-            </div>
-          ) : (
-            <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
-              Untimed
-            </div>
-          )}
-        </div>
-
-        {/* SUBJECT TABS */}
-
-        {mode === 'cbt' && (
-          <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-700">
-            {CBT_SECTIONS.map(
-              (section) => {
-                const active =
-                  activeSection ===
-                  section.key;
-
-                const sectionCount =
-                  cbtQuestions?.[
-                    section.key
-                  ]?.length ?? 0;
-
-                return (
-                  <button
-                    key={
-                      section.key
-                    }
-                    type="button"
-                    onClick={() =>
-                      changeSection(
-                        section.key
-                      )
-                    }
-                    className={`whitespace-nowrap px-4 py-3 text-sm font-semibold transition ${
-                      active
-                        ? 'border-b-4 border-emerald-500 text-emerald-400'
-                        : 'text-slate-300 hover:text-white'
+                      className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition ${
+                      isCorrectOption
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : isWrongSelected
+                        ? 'border-red-500 bg-red-500/10'
+                        : isSelected
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : 'border-slate-700 bg-slate-800 hover:border-slate-500'
                     }`}
                   >
-                    {section.name}
-
-                    <span className="ml-1 text-xs opacity-60">
-                      ({sectionCount})
-                    </span>
-                  </button>
-                );
-              }
-            )}
-          </div>
-        )}
-
-        {/* QUESTION HEADER */}
-
-        <div className="mb-5 flex items-center justify-between gap-3">
-          <div className="rounded-full border-2 border-slate-500 px-6 py-3">
-            <span className="font-bold">
-              Question{' '}
-              {safeCurrentIndex +
-                1}
-              /
-              {
-                sectionQuestions.length
-              }
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              setShowCalculator(
-                (value) =>
-                  !value
-              )
-            }
-            className="rounded-full border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          >
-            🧮 Calculator
-          </button>
-        </div>
-
-        {/* QUESTION CARD */}
-
-        <div className="rounded-2xl bg-slate-900 p-5 sm:p-7">
-
-          <p className="mb-7 text-lg font-medium leading-relaxed text-white sm:text-xl">
-            {
-              currentQuestion.question_text
-            }
-          </p>
-
-          <div className="space-y-4">
-            {(
-              [
-                'A',
-                'B',
-                'C',
-                'D',
-              ] as const
-            ).map(
-              (letter) => {
-                const optionText =
-                  currentQuestion[
-                    `option_${letter.toLowerCase()}` as
-                      | 'option_a'
-                      | 'option_b'
-                      | 'option_c'
-                      | 'option_d'
-                  ];
-
-                const isSelected =
-                  answers[
-                    currentQuestion.id
-                  ] === letter;
-
-                const showResult =
-                  mode ===
-                    'practice' &&
-                  !!currentFeedback;
-
-                const isCorrectOption =
-                  showResult &&
-                  currentFeedback.correct_answer ===
-                    letter;
-
-                const isWrongSelected =
-                  showResult &&
-                  isSelected &&
-                  !currentFeedback.is_correct;
-
-                return (
-                  <button
-                    key={letter}
-                    type="button"
-                    onClick={() =>
-                      selectAnswer(
-                        letter
-                      )
-                    }
-                    disabled={
-                      answerLoading ||
-                      (mode ===
-                        'practice' &&
-                        !!currentFeedback)
-                    }
-                    className={`flex w-full items-start gap-4 rounded-xl border-2 p-4 text-left transition ${
-  isCorrectOption
-    ? 'border-emerald-500 bg-emerald-900/30'
-    : isWrongSelected
-      ? 'border-red-500 bg-red-900/30'
-      : isSelected
-        ? 'border-emerald-500 bg-emerald-900/20'
-        : 'border-slate-700 bg-slate-900 hover:border-slate-500'
-}`}
-                  >
                     <span
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold ${
-                        isSelected
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
+                        isCorrectOption
                           ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : 'border-slate-500 text-slate-300'
+                          : isWrongSelected
+                          ? 'border-red-500 bg-red-500 text-white'
+                          : isSelected
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-slate-600 bg-slate-900 text-slate-300'
                       }`}
                     >
                       {letter}
                     </span>
 
-                    <span className="pt-1 text-base leading-relaxed text-slate-100">
+                    <span className="flex-1 pt-1 text-sm leading-relaxed text-slate-100 sm:text-base">
                       {optionText}
                     </span>
                   </button>
@@ -911,165 +624,182 @@ export function ExamRunner({
 
           {/* PRACTICE FEEDBACK */}
 
-          {mode === 'practice' &&
-            currentFeedback && (
+          {currentFeedback &&
+            mode === 'practice' && (
               <div
                 className={`mt-6 rounded-xl p-4 ${
                   currentFeedback.is_correct
-                    ? 'bg-emerald-900/40 text-emerald-200'
-                    : 'bg-red-900/40 text-red-200'
+                    ? 'bg-emerald-500/10 text-emerald-300'
+                    : 'bg-red-500/10 text-red-300'
                 }`}
               >
                 <p className="font-bold">
                   {currentFeedback.is_correct
-                    ? '✓ Correct!'
-                    : `✗ Incorrect — correct answer: ${currentFeedback.correct_answer}`}
+                    ? 'Correct!'
+                    : `Incorrect. Correct answer: ${currentFeedback.correct_answer}`}
                 </p>
 
                 {currentFeedback.explanation && (
-                  <div className="mt-3 rounded-lg bg-slate-950/50 p-3 text-sm">
-                    <p className="font-semibold">
-                      Explanation
-                    </p>
-
-                    <p className="mt-1">
-                      {currentFeedback.explanation}
-                    </p>
-                  </div>
+                  <p className="mt-2 text-sm leading-relaxed">
+                    {currentFeedback.explanation}
+                  </p>
                 )}
               </div>
             )}
-
-          {answerLoading && (
-            <p className="mt-4 text-center text-sm text-slate-400">
-              Saving answer...
-            </p>
-          )}
         </div>
 
-        {/* BOTTOM CONTROLS */}
+        {/* NAVIGATION */}
 
         <div className="mt-5 flex items-center justify-between gap-3">
-
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={goPrevious}
             disabled={
               safeCurrentIndex === 0 ||
               submitting
             }
-            className="rounded-full border-2 border-slate-600 px-5 py-3 font-semibold text-slate-300 disabled:opacity-30"
           >
-            ← Previous
-          </button>
+            Previous
+          </Button>
 
-          <div className="text-center text-sm text-slate-400">
+          <span className="text-sm text-slate-400">
             {answeredInCurrentSection}/
-            {sectionQuestions.length}
-          </div>
+            {sectionQuestions.length} answered
+          </span>
 
-          <button
-            type="button"
-            onClick={goNext}
-            disabled={
-              safeCurrentIndex ===
-                sectionQuestions.length - 1 ||
-              submitting
-            }
-            className="rounded-full bg-emerald-600 px-7 py-3 font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            Next →
-          </button>
+          {safeCurrentIndex <
+          sectionQuestions.length - 1 ? (
+            <Button
+              type="button"
+              onClick={goNext}
+              disabled={submitting}
+            >
+              Next
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={() =>
+                setShowConfirm(true)
+              }
+              loading={submitting}
+            >
+              Submit Exam
+            </Button>
+          )}
         </div>
 
-        {/* SUBMIT BUTTON */}
+        {/* QUESTION NAVIGATOR */}
 
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() =>
-              setShowConfirm(true)
-            }
-            disabled={submitting}
-            className="w-full rounded-xl bg-orange-500 px-6 py-4 text-base font-bold text-white shadow-lg transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            ✓ Submit Exam
-          </button>
-        </div>
-
-        {/* OVERALL PROGRESS */}
-
-        <div className="mt-4 pb-6 text-center text-xs text-slate-500">
-          {answeredCount} of {questions.length}{' '}
-          answered
-        </div>
-      </div>
-
-      {/* CALCULATOR */}
-
-      {showCalculator && (
-        <div className="fixed bottom-5 right-4 z-[110]">
-          <Calculator
-            onClose={() =>
-              setShowCalculator(false)
-            }
-          />
-        </div>
-      )}
-
-      {/* SUBMIT CONFIRMATION */}
-
-      {showConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
-
-            <h3 className="text-xl font-bold">
-              Submit your CBT?
-            </h3>
-
-            <p className="mt-3 text-sm text-slate-500">
-              You have answered{' '}
-              {answeredCount} of{' '}
-              {questions.length}{' '}
-              questions.
+        <div className="mt-6 rounded-2xl bg-slate-900 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-300">
+              Questions
             </p>
 
-            {answeredCount <
-              questions.length && (
-              <p className="mt-2 text-sm font-medium text-amber-700">
-                Unanswered questions will
-                be marked incorrect.
-              </p>
+            <p className="text-xs text-slate-500">
+              {answeredCount}/{questions.length}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+            {sectionQuestions.map(
+              (question, index) => {
+                const answered =
+                  !!answers[question.id];
+
+                const active =
+                  index === safeCurrentIndex;
+
+                return (
+                  <button
+                    key={question.id}
+                    type="button"
+                    onClick={() =>
+                      setCurrentIndex(index)
+                    }
+                    className={`h-9 rounded-lg text-xs font-bold transition ${
+                      active
+                        ? 'bg-emerald-500 text-white'
+                        : answered
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              }
             )}
-
-            <div className="mt-6 flex gap-3">
-
-              <Button
-                variant="secondary"
-                fullWidth
-                onClick={() =>
-                  setShowConfirm(false)
-                }
-                disabled={submitting}
-              >
-                Continue
-              </Button>
-
-              <Button
-                variant="danger"
-                fullWidth
-                loading={submitting}
-                onClick={() =>
-                  handleSubmit(false)
-                }
-              >
-                Submit
-              </Button>
-
-            </div>
           </div>
         </div>
-      )}
+
+        {/* CALCULATOR */}
+
+        {showCalculator && (
+          <div className="fixed bottom-4 right-4 z-50">
+            <Calculator />
+          </div>
+        )}
+
+        {/* SUBMIT CONFIRMATION */}
+
+        {showConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-2xl">
+              <h2 className="text-xl font-bold">
+                Submit Exam?
+              </h2>
+
+              <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                You have answered{' '}
+                <strong>
+                  {answeredCount}
+                </strong>{' '}
+                out of{' '}
+                <strong>
+                  {questions.length}
+                </strong>{' '}
+                questions.
+              </p>
+
+              {answeredCount <
+                questions.length && (
+                <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                  You still have unanswered
+                  questions. Are you sure you
+                  want to submit?
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    setShowConfirm(false)
+                  }
+                  disabled={submitting}
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowConfirm(false);
+                    handleSubmit(false);
+                  }}
+                  loading={submitting}
+                >
+                  Submit
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
