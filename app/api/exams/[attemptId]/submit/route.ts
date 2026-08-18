@@ -3,19 +3,6 @@ import { getCurrentProfile } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { scoreAttempt } from '@/lib/scoring/scoreAttempt';
 
-// POST /api/exams/[attemptId]/submit
-//
-// Normal CBT:
-//   - calculate and return the normal result.
-//
-// UTME Challenge:
-//   - uses mode: 'cbt'
-//   - identified by round_id in the attempt config
-//   - 180 questions = 400 marks
-//   - save score to challenge participant
-//   - create leaderboard entry
-//   - DO NOT reveal score to student
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ attemptId: string }> }
@@ -75,34 +62,38 @@ export async function POST(
 
   /*
    * =====================================================
-   * DETERMINE WHETHER THIS IS A UTME CHALLENGE
+   * READ CONFIG
    * =====================================================
-   *
-   * IMPORTANT:
-   *
-   * The UTME Challenge uses:
-   *
-   *     mode: 'cbt'
-   *
-   * It is NOT:
-   *
-   *     mode: 'utme_challenge'
-   *
-   * We identify the challenge using round_id
-   * stored in the attempt configuration.
    */
 
   const config =
     (attempt.config ?? {}) as {
       round_id?: string | null;
+
       challenge?: {
         round_id?: string | null;
         participant_id?: string | null;
       } | null;
+
       cbt?: {
         total_questions?: number;
       } | null;
     };
+
+  /*
+   * =====================================================
+   * FIND CHALLENGE ROUND
+   * =====================================================
+   *
+   * A UTME Challenge is identified by:
+   *
+   *   mode = cbt
+   *   AND
+   *   round_id exists in config
+   *
+   * We also support round_id inside config.challenge
+   * for compatibility with older attempts.
+   */
 
   const roundId =
     config.round_id ??
@@ -111,7 +102,7 @@ export async function POST(
 
   const isChallenge =
     attempt.mode === 'cbt' &&
-    !!roundId;
+    Boolean(roundId);
 
   /*
    * =====================================================
@@ -120,10 +111,6 @@ export async function POST(
    */
 
   if (attempt.status !== 'in_progress') {
-    /*
-     * Challenge results must NEVER be returned.
-     */
-
     if (isChallenge) {
       return NextResponse.json({
         success: true,
@@ -131,24 +118,21 @@ export async function POST(
         challenge: true,
         results_hidden: true,
         message:
-          'Your challenge has been submitted successfully. Results are coming soon.',
+          'Your challenge has already been submitted. Results will be available when they are released.',
       });
     }
 
-    /*
-     * Normal CBT/exams keep their normal behavior.
-     */
-
-    const { data: existing } =
-      await admin
-        .from('exam_attempts')
-        .select('*')
-        .eq('id', attemptId)
-        .single();
+    const {
+      data: existingAttempt,
+    } = await admin
+      .from('exam_attempts')
+      .select('*')
+      .eq('id', attemptId)
+      .single();
 
     return NextResponse.json({
       already_submitted: true,
-      attempt: existing,
+      attempt: existingAttempt,
     });
   }
 
@@ -161,9 +145,7 @@ export async function POST(
   let result;
 
   try {
-    result = await scoreAttempt(
-      attemptId
-    );
+    result = await scoreAttempt(attemptId);
   } catch (error) {
     console.error(
       'Exam scoring error:',
@@ -183,20 +165,21 @@ export async function POST(
 
   /*
    * =====================================================
-   * CALCULATE TIME USED
+   * TIME USED
    * =====================================================
    */
+
+  const startedAt =
+    new Date(attempt.started_at).getTime();
+
+  const now =
+    Date.now();
 
   const timeUsedSeconds =
     Math.max(
       0,
       Math.round(
-        (
-          Date.now() -
-          new Date(
-            attempt.started_at
-          ).getTime()
-        ) / 1000
+        (now - startedAt) / 1000
       )
     );
 
@@ -212,8 +195,7 @@ export async function POST(
    *
    * 180 questions = 400 marks
    *
-   * Formula:
-   *
+   * score =
    * correct / 180 × 400
    */
 
@@ -221,23 +203,22 @@ export async function POST(
     isChallenge
       ? Math.round(
           (
-            (result.correct_count /
-              180) *
+            (result.correct_count / 180) *
             400
           ) * 100
         ) / 100
       : null;
 
-  /*
-   * =====================================================
-   * SAVE SCORE
-   * =====================================================
-   */
-
   const savedScore =
     isChallenge
       ? challengeScore!
       : result.score;
+
+  /*
+   * =====================================================
+   * FINALIZE EXAM ATTEMPT
+   * =====================================================
+   */
 
   const {
     data: updatedAttempt,
@@ -267,7 +248,8 @@ export async function POST(
       unanswered_count:
         result.unanswered_count,
 
-      score: savedScore,
+      score:
+        savedScore,
     })
     .eq('id', attemptId)
     .select('*')
@@ -299,17 +281,9 @@ export async function POST(
 
   if (isChallenge) {
     /*
-     * =================================================
-     * FIND CHALLENGE PARTICIPANT
-     * =================================================
-     *
-     * We identify the participant using:
-     *
-     *   round_id
-     *   student_id
-     *
-     * This means we do not depend on participant_id
-     * being stored inside the attempt config.
+     * ---------------------------------------------------
+     * FIND PARTICIPANT
+     * ---------------------------------------------------
      */
 
     const {
@@ -320,7 +294,10 @@ export async function POST(
       .from(
         'utme_challenge_participants'
       )
-      .select('id')
+      .select(`
+        id,
+        status
+      `)
       .eq(
         'round_id',
         roundId
@@ -368,14 +345,17 @@ export async function POST(
     }
 
     /*
-     * =================================================
-     * SAVE CHALLENGE PARTICIPANT SCORE
-     * =================================================
+     * ---------------------------------------------------
+     * SAVE PARTICIPANT RESULT
+     * ---------------------------------------------------
+     *
+     * This is the important part for the student
+     * leaderboard.
      */
 
     const {
       error:
-        participantError,
+        participantUpdateError,
     } = await admin
       .from(
         'utme_challenge_participants'
@@ -383,7 +363,15 @@ export async function POST(
       .update({
         score:
           challengeScore,
-        rank: null,
+
+        status:
+          'submitted',
+
+        submitted_at:
+          submittedAt,
+
+        rank:
+          null,
       })
       .eq(
         'id',
@@ -391,11 +379,11 @@ export async function POST(
       );
 
     if (
-      participantError
+      participantUpdateError
     ) {
       console.error(
         'Challenge participant update error:',
-        participantError
+        participantUpdateError
       );
 
       return NextResponse.json(
@@ -408,9 +396,9 @@ export async function POST(
     }
 
     /*
-     * =================================================
+     * ---------------------------------------------------
      * LEADERBOARD ENTRY
-     * =================================================
+     * ---------------------------------------------------
      */
 
     const {
@@ -420,64 +408,60 @@ export async function POST(
       .from(
         'leaderboard_entries'
       )
-      .insert({
-        attempt_id:
-          attemptId,
+      .upsert(
+        {
+          attempt_id:
+            attemptId,
 
-        student_id:
-          caller.id,
+          student_id:
+            caller.id,
 
-        category:
-          roundId,
+          category:
+            roundId,
 
-        score:
-          challengeScore,
+          score:
+            challengeScore,
 
-        time_used_seconds:
-          timeUsedSeconds,
-      });
+          time_used_seconds:
+            timeUsedSeconds,
+        },
+        {
+          onConflict:
+            'attempt_id',
+        }
+      );
 
-    if (
-      leaderboardError
-    ) {
+    if (leaderboardError) {
+      /*
+       * The challenge itself has already been submitted.
+       *
+       * Therefore we log the leaderboard error instead
+       * of telling the student their exam failed.
+       */
+
       console.error(
         'Challenge leaderboard entry error:',
         leaderboardError
       );
-
-      /*
-       * Do not fail the student's submission
-       * because the leaderboard entry failed.
-       */
     }
 
     /*
-     * =================================================
-     * SECURITY
-     * =================================================
-     *
-     * NEVER return:
-     *
-     * - score
-     * - correct_count
-     * - incorrect_count
-     * - unanswered_count
-     * - rank
-     * - updatedAttempt
-     * - result
+     * ---------------------------------------------------
+     * DO NOT REVEAL RESULT TO STUDENT
+     * ---------------------------------------------------
      */
 
     return NextResponse.json({
       success: true,
 
-      challenge: true,
-
       submitted: true,
+
+      challenge: true,
 
       results_hidden: true,
 
       message:
-        'Your challenge has been submitted successfully. Results are coming soon.',
+        'Your challenge has been submitted successfully. Results will be available when they are released.',
     });
   }
 
@@ -487,45 +471,58 @@ export async function POST(
    * =====================================================
    */
 
+  const normalCategory =
+    (
+      updatedAttempt.config as {
+        round_id?: string | null;
+      } | null
+    )?.round_id ??
+    updatedAttempt.mode ??
+    'exam';
+
   const {
     error:
-      leaderboardError,
+      normalLeaderboardError,
   } = await admin
     .from(
       'leaderboard_entries'
     )
-    .insert({
-      attempt_id:
-        attemptId,
+    .upsert(
+      {
+        attempt_id:
+          attemptId,
 
-      student_id:
-        caller.id,
+        student_id:
+          caller.id,
 
-      category:
-        (updatedAttempt.config as {
-          round_id?: string;
-        })?.round_id ??
-        updatedAttempt.mode ??
-        'exam',
+        category:
+          normalCategory,
 
-      score:
-        result.score,
+        score:
+          result.score,
 
-      time_used_seconds:
-        timeUsedSeconds,
-    });
+        time_used_seconds:
+          timeUsedSeconds,
+      },
+      {
+        onConflict:
+          'attempt_id',
+      }
+    );
 
   if (
-    leaderboardError
+    normalLeaderboardError
   ) {
     console.error(
-      'Leaderboard entry error:',
-      leaderboardError
+      'Normal leaderboard entry error:',
+      normalLeaderboardError
     );
   }
 
   /*
-   * Normal exams receive their results.
+   * =====================================================
+   * NORMAL EXAM RESPONSE
+   * =====================================================
    */
 
   return NextResponse.json({
