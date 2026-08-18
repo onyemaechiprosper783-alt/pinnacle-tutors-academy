@@ -15,7 +15,6 @@ const startSchema = z.object({
     'practice',
     'mock',
     'cbt',
-    'utme_challenge',
   ]),
 
   subject_ids: z
@@ -54,6 +53,10 @@ const startSchema = z.object({
     .max(2100)
     .optional(),
 
+  /*
+   * A challenge round can be supplied
+   * while the actual exam mode remains CBT.
+   */
   round_id: z
     .string()
     .uuid()
@@ -80,9 +83,7 @@ const startSchema = z.object({
         .optional(),
 
       other_subject_ids: z
-        .array(
-          z.string().uuid()
-        )
+        .array(z.string().uuid())
         .length(3)
         .optional(),
     })
@@ -96,12 +97,6 @@ const DEFAULT_DURATION: Record<
   cbt: 120 * 60,
   mock: 90 * 60,
   practice: 0,
-
-  // UTME Challenge is 120 minutes.
-  // For the challenge, this will be
-  // replaced with the remaining time
-  // calculated from activated_at.
-  utme_challenge: 120 * 60,
 };
 
 export async function POST(
@@ -113,8 +108,7 @@ export async function POST(
   if (!caller) {
     return NextResponse.json(
       {
-        error:
-          'Not authorized.',
+        error: 'Not authorized.',
       },
       { status: 401 }
     );
@@ -154,14 +148,36 @@ export async function POST(
 
   /*
    * ====================================================
-   * UTME CHALLENGE TIME
+   * DETECT SPECIAL JAMB CBT / UTME CHALLENGE
    * ====================================================
    *
-   * The challenge timer starts when
-   * the ADMIN activates the round.
+   * The challenge uses CBT mode.
    *
-   * It does NOT start from the
-   * student's attempt time.
+   * Therefore:
+   *
+   * mode === 'cbt'
+   *
+   * and a round_id means this CBT attempt
+   * belongs to a challenge round.
+   */
+  const isChallenge =
+    mode === 'cbt' &&
+    !!round_id;
+
+  const isSpecialCbt =
+    mode === 'cbt' &&
+    !!cbt_config;
+
+  /*
+   * ====================================================
+   * CHALLENGE ROUND TIME
+   * ====================================================
+   *
+   * The challenge timer starts when the
+   * administrator activates the round.
+   *
+   * It does NOT restart when the student
+   * opens the exam.
    */
   let challengeRound:
     | {
@@ -180,17 +196,7 @@ export async function POST(
     | number
     | null = null;
 
-  if (mode === 'utme_challenge') {
-    if (!round_id) {
-      return NextResponse.json(
-        {
-          error:
-            'Challenge round is required.',
-        },
-        { status: 400 }
-      );
-    }
-
+  if (isChallenge) {
     const {
       data: round,
       error: roundError,
@@ -225,8 +231,7 @@ export async function POST(
       );
     }
 
-    challengeRound =
-      round;
+    challengeRound = round;
 
     if (!round.is_active) {
       return NextResponse.json(
@@ -274,13 +279,7 @@ export async function POST(
       elapsedSeconds;
 
     /*
-     * If the global challenge
-     * clock has already finished,
-     * don't allow a new attempt.
-     *
-     * Existing attempts will be
-     * automatically submitted by
-     * the submission/timer system.
+     * Challenge has already ended.
      */
     if (remainingSeconds <= 0) {
       return NextResponse.json(
@@ -296,19 +295,23 @@ export async function POST(
       remainingSeconds;
   }
 
-  const isSpecialCbt =
-    mode === 'cbt' &&
-    !!cbt_config;
-
-  let questionIds:
-    string[] = [];
+  let questionIds: string[] = [];
 
   /*
    * ====================================================
    * SPECIAL JAMB CBT
    * ====================================================
+   *
+   * 60 English
+   *   - 50 English
+   *   - 10 Lekki Headmaster
+   *
+   * 40 Subject 1
+   * 40 Subject 2
+   * 40 Subject 3
+   *
+   * TOTAL = 180
    */
-
   try {
     if (isSpecialCbt) {
       const otherSubjectIds =
@@ -360,6 +363,12 @@ export async function POST(
           ?.other_subject_question_count ??
         40;
 
+      /*
+       * The 60 English section is:
+       *
+       * 50 English
+       * 10 Lekki Headmaster
+       */
       if (
         requestedEnglish !== 50 &&
         requestedEnglish !== 60
@@ -462,16 +471,26 @@ export async function POST(
         await selectQuestions({
           subjectIds:
             subject_ids,
+
           mode,
+
           questionCount:
             question_count,
+
           difficulty,
+
           examType:
             exam_type,
+
           year,
         });
     }
   } catch (error) {
+    console.error(
+      'Question selection error:',
+      error
+    );
+
     return NextResponse.json(
       {
         error:
@@ -593,16 +612,11 @@ export async function POST(
       );
 
     if (
-      englishQuestions.length !==
-        50 ||
-      lekkiQuestions.length !==
-        10 ||
-      subject1Questions.length !==
-        40 ||
-      subject2Questions.length !==
-        40 ||
-      subject3Questions.length !==
-        40
+      englishQuestions.length !== 50 ||
+      lekkiQuestions.length !== 10 ||
+      subject1Questions.length !== 40 ||
+      subject2Questions.length !== 40 ||
+      subject3Questions.length !== 40
     ) {
       return NextResponse.json(
         {
@@ -649,20 +663,19 @@ export async function POST(
    */
 
   const finalQuestionCount =
-    mode === 'utme_challenge'
-      ? 180
-      : isSpecialCbt
+    isSpecialCbt
       ? 180
       : question_count;
 
   /*
-   * IMPORTANT:
+   * Challenge:
+   * use the remaining global round time.
    *
-   * UTME Challenge gets the REMAINING
-   * time from the global round clock.
+   * Normal CBT:
+   * use 120 minutes.
    */
   const finalDuration =
-    mode === 'utme_challenge'
+    isChallenge
       ? challengeRemainingSeconds!
       : isSpecialCbt
       ? 120 * 60
@@ -684,13 +697,16 @@ export async function POST(
       student_id:
         caller.id,
 
-      mode,
+      /*
+       * IMPORTANT:
+       *
+       * The UTME Challenge is STILL
+       * stored as CBT mode.
+       */
+      mode: 'cbt',
 
       subject_ids:
-        mode ===
-        'utme_challenge'
-          ? subject_ids
-          : isSpecialCbt
+        isSpecialCbt
           ? [
               ENGLISH_SUBJECT_ID,
               LEKKI_HEADMASTER_SUBJECT_ID,
@@ -716,16 +732,23 @@ export async function POST(
         round_id,
 
         /*
-         * Store the global challenge
-         * deadline information.
+         * =================================================
+         * CHALLENGE CONFIG
+         * =================================================
          */
         challenge:
-          mode ===
-          'utme_challenge'
+          isChallenge
             ? {
+                is_challenge:
+                  true,
+
                 round_id:
                   challengeRound
                     ?.id,
+
+                title:
+                  challengeRound
+                    ?.title,
 
                 activated_at:
                   challengeRound
@@ -753,8 +776,22 @@ export async function POST(
               }
             : null,
 
+        /*
+         * =================================================
+         * CBT CONFIG
+         * =================================================
+         */
         cbt: isSpecialCbt
           ? {
+              is_challenge:
+                isChallenge,
+
+              round_id:
+                isChallenge
+                  ? challengeRound
+                      ?.id
+                  : null,
+
               english_questions:
                 50,
 
@@ -936,6 +973,12 @@ export async function POST(
         ]
       : [];
 
+  /*
+   * ====================================================
+   * RESPONSE
+   * ====================================================
+   */
+
   return NextResponse.json({
     attempt_id:
       attempt.id,
@@ -947,13 +990,15 @@ export async function POST(
       attempt.duration_seconds,
 
     /*
-     * For UTME Challenge this is
-     * the REMAINING time.
+     * Challenge information is returned,
+     * but the exam itself remains CBT.
      */
     challenge:
-      mode ===
-      'utme_challenge'
+      isChallenge
         ? {
+            is_challenge:
+              true,
+
             round_id:
               challengeRound
                 ?.id,
@@ -964,7 +1009,8 @@ export async function POST(
 
             total_duration_seconds:
               challengeRound
-                ?.duration_seconds ??
+                ?.duration_seconds 
+              ??
               120 * 60,
 
             remaining_seconds:
@@ -990,6 +1036,15 @@ export async function POST(
     cbt:
       isSpecialCbt
         ? {
+            is_challenge:
+              isChallenge,
+
+            round_id:
+              isChallenge
+                ? challengeRound
+                    ?.id
+                : null,
+
             total_questions:
               180,
 
