@@ -2,53 +2,228 @@ import { NextResponse } from 'next/server';
 import { getCurrentProfile } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-export async function GET(_request: Request, { params }: { params: Promise<{ attemptId: string }> }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ attemptId: string }> }
+) {
   const caller = await getCurrentProfile();
-  if (!caller) return NextResponse.json({ error: 'Not authorized.' }, { status: 401 });
+
+  if (!caller) {
+    return NextResponse.json(
+      { error: 'Not authorized.' },
+      { status: 401 }
+    );
+  }
 
   const { attemptId } = await params;
   const admin = createAdminClient();
 
-  const { data: attempt } = await admin.from('exam_attempts').select('*').eq('id', attemptId).single();
-  if (!attempt || (attempt.student_id !== caller.id && caller.role === 'student')) {
-    return NextResponse.json({ error: 'Attempt not found.' }, { status: 404 });
+  /*
+   * =====================================================
+   * LOAD ATTEMPT
+   * =====================================================
+   */
+
+  const { data: attempt, error: attemptError } =
+    await admin
+      .from('exam_attempts')
+      .select('*')
+      .eq('id', attemptId)
+      .single();
+
+  if (
+    attemptError ||
+    !attempt ||
+    (attempt.student_id !== caller.id &&
+      caller.role === 'student')
+  ) {
+    return NextResponse.json(
+      { error: 'Attempt not found.' },
+      { status: 404 }
+    );
   }
 
-  const { data: attemptQuestions } = await admin
-    .from('attempt_questions')
-    .select('id, question_id, position, selected_answer, is_correct')
-    .eq('attempt_id', attemptId)
-    .order('position');
+  /*
+   * =====================================================
+   * UTME CHALLENGE SECURITY
+   * =====================================================
+   *
+   * Students must NOT receive challenge results
+   * until the administrator releases them.
+   *
+   * Admins can still access everything normally.
+   */
 
-  const questionIds = (attemptQuestions ?? []).map((aq) => aq.question_id);
+  const isChallenge =
+    attempt.mode === 'utme_challenge';
 
-  // Before submission: answer-free question data only (resuming an exam).
-  // After submission: full question data including the answer key and
-  // explanation, so the student can review what they got wrong.
-  const isSubmitted = attempt.status !== 'in_progress';
-  const { data: questions } = await admin
-    .from(isSubmitted ? 'questions' : 'questions_public')
-    .select(isSubmitted ? '*, subjects(name)' : '*, subjects(name)')
-    .in('id', questionIds);
+  const isStudent =
+    caller.role === 'student';
 
-  const questionMap = new Map((questions ?? []).map((q) => [q.id, q]));
+  const resultsReleased =
+    Boolean(
+      (attempt.config as {
+        results_released?: boolean;
+      } | null)?.results_released
+    );
 
-  const combined = (attemptQuestions ?? []).map((aq) => ({
-    ...aq,
-    question: questionMap.get(aq.question_id),
-  }));
+  if (
+    isChallenge &&
+    isStudent &&
+    !resultsReleased
+  ) {
+    return NextResponse.json({
+      attempt: {
+        id: attempt.id,
+        mode: attempt.mode,
+        status: attempt.status,
+        started_at: attempt.started_at,
+        submitted_at:
+          attempt.submitted_at,
+        duration_seconds:
+          attempt.duration_seconds,
+        time_used_seconds:
+          attempt.time_used_seconds,
+      },
 
-  // Subject-level breakdown, only meaningful once submitted.
-  let subjectBreakdown: Record<string, { correct: number; total: number }> = {};
+      questions: [],
+
+      subject_breakdown: {},
+
+      challenge: true,
+
+      results_hidden: true,
+
+      message:
+        'Your challenge has been submitted successfully. Results will be available when they are released.',
+    });
+  }
+
+  /*
+   * =====================================================
+   * LOAD ATTEMPT QUESTIONS
+   * =====================================================
+   */
+
+  const { data: attemptQuestions } =
+    await admin
+      .from('attempt_questions')
+      .select(
+        'id, question_id, position, selected_answer, is_correct'
+      )
+      .eq('attempt_id', attemptId)
+      .order('position');
+
+  const questionIds =
+    (attemptQuestions ?? []).map(
+      (aq) => aq.question_id
+    );
+
+  /*
+   * =====================================================
+   * QUESTION DATA
+   * =====================================================
+   *
+   * Before submission:
+   *   Use questions_public so answers are hidden.
+   *
+   * After submission:
+   *   Normal exams can see the answer key.
+   */
+
+  const isSubmitted =
+    attempt.status !== 'in_progress';
+
+  const { data: questions } =
+    await admin
+      .from(
+        isSubmitted
+          ? 'questions'
+          : 'questions_public'
+      )
+      .select('*, subjects(name)')
+      .in('id', questionIds);
+
+  const questionMap =
+    new Map(
+      (questions ?? []).map(
+        (q) => [q.id, q]
+      )
+    );
+
+  const combined =
+    (attemptQuestions ?? []).map(
+      (aq) => ({
+        ...aq,
+        question:
+          questionMap.get(
+            aq.question_id
+          ),
+      })
+    );
+
+  /*
+   * =====================================================
+   * SUBJECT BREAKDOWN
+   * =====================================================
+   */
+
+  let subjectBreakdown: Record<
+    string,
+    {
+      correct: number;
+      total: number;
+    }
+  > = {};
+
   if (isSubmitted) {
-    subjectBreakdown = combined.reduce((acc, aq) => {
-      const subjectName = aq.question?.subjects?.name ?? 'Unknown';
-      acc[subjectName] ??= { correct: 0, total: 0 };
-      acc[subjectName].total += 1;
-      if (aq.is_correct) acc[subjectName].correct += 1;
-      return acc;
-    }, {} as Record<string, { correct: number; total: number }>);
+    subjectBreakdown =
+      combined.reduce(
+        (acc, aq) => {
+          const subjectName =
+            aq.question?.subjects
+              ?.name ??
+            'Unknown';
+
+          acc[subjectName] ??= {
+            correct: 0,
+            total: 0,
+          };
+
+          acc[subjectName].total += 1;
+
+          if (aq.is_correct) {
+            acc[subjectName].correct += 1;
+          }
+
+          return acc;
+        },
+        {} as Record<
+          string,
+          {
+            correct: number;
+            total: number;
+          }
+        >
+      );
   }
 
-  return NextResponse.json({ attempt, questions: combined, subject_breakdown: subjectBreakdown });
+  /*
+   * =====================================================
+   * NORMAL RESULT
+   * =====================================================
+   */
+
+  return NextResponse.json({
+    attempt,
+
+    questions: combined,
+
+    subject_breakdown:
+      subjectBreakdown,
+
+    challenge: false,
+
+    results_hidden: false,
+  });
 }
