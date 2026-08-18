@@ -8,7 +8,6 @@ import {
 import { useRouter } from 'next/navigation';
 import { useExamTimer } from '@/lib/hooks/useExamTimer';
 import { Calculator } from '@/components/calculator/Calculator';
-import { Button } from '@/components/ui/Button';
 import type { QuestionPublic } from '@/types/database';
 
 interface ExamRunnerProps {
@@ -72,34 +71,33 @@ export function ExamRunner({
   const [showCalculator, setShowCalculator] =
     useState(false);
 
-  const [showConfirm, setShowConfirm] =
-    useState(false);
-
-  const [activeSection, setActiveSection] =
-    useState(0);
+  const [activeSectionKey, setActiveSectionKey] =
+    useState('english');
 
   /*
    * =====================================================
    * BUILD CBT SECTIONS
    * =====================================================
    *
-   * UTME CHALLENGE:
+   * CBT structure:
    *
-   * 50 English
-   * 10 Lekki Headmaster
-   * 40 Student Subject 1
-   * 40 Student Subject 2
-   * 40 Student Subject 3
+   * English section:
+   *   50 English
+   *   10 Lekki Headmaster
+   *   TOTAL = 60
+   *
+   * Then:
+   *   Student-selected subject 1 = 40
+   *   Student-selected subject 2 = 40
+   *   Student-selected subject 3 = 40
    *
    * TOTAL = 180
    *
    * The three additional subjects are NOT hard-coded.
-   * They come from the student's selected CBT paper.
+   * They come from the questions supplied to the runner.
    */
 
-  const cbtSections = useMemo<
-    CbtSection[]
-  >(() => {
+  const cbtSections = useMemo<CbtSection[]>(() => {
     if (mode !== 'cbt') {
       return [];
     }
@@ -107,38 +105,63 @@ export function ExamRunner({
     const typedQuestions =
       questions as QuestionWithSubject[];
 
-    if (typedQuestions.length === 0) {
-      return [];
-    }
+    const getSubjectName = (
+      question: QuestionWithSubject
+    ) => {
+      return (
+        question.subject_name ??
+        question.subject ??
+        ''
+      )
+        .toString()
+        .trim();
+    };
 
     /*
      * -----------------------------------------------------
-     * ENGLISH + LEKKI HEADMASTER
+     * ENGLISH
      * -----------------------------------------------------
-     *
-     * They occupy the first 60 questions in the locked
-     * UTME Challenge paper.
      */
 
     const englishQuestions =
       typedQuestions.filter(
         (question) =>
           question.subject_id ===
-          ENGLISH_SUBJECT_ID
-      );
-
-    const lekkiQuestions =
-      typedQuestions.filter(
-        (question) =>
+            ENGLISH_SUBJECT_ID ||
           question.subject_id ===
-          LEKKI_HEADMASTER_SUBJECT_ID
+            LEKKI_HEADMASTER_SUBJECT_ID ||
+          getSubjectName(question)
+            .toLowerCase()
+            .includes('english') ||
+          getSubjectName(question)
+            .toLowerCase()
+            .includes('lekki headmaster')
       );
 
     /*
      * -----------------------------------------------------
-     * FIND THE THREE STUDENT SUBJECTS
+     * OTHER SUBJECTS
      * -----------------------------------------------------
+     *
+     * Remove English and Lekki Headmaster.
+     *
+     * Group everything else by subject_id.
      */
+
+    const otherQuestions =
+      typedQuestions.filter(
+        (question) =>
+          question.subject_id !==
+            ENGLISH_SUBJECT_ID &&
+          question.subject_id !==
+            LEKKI_HEADMASTER_SUBJECT_ID &&
+          !getSubjectName(question)
+            .toLowerCase()
+            .includes('english') &&
+          !getSubjectName(question)
+            .toLowerCase()
+            .includes('lekki headmaster')
+      );
 
     const subjectGroups =
       new Map<
@@ -146,17 +169,12 @@ export function ExamRunner({
         QuestionWithSubject[]
       >();
 
-    for (const question of typedQuestions) {
+    for (const question of otherQuestions) {
       const subjectId =
-        question.subject_id;
+        question.subject_id ??
+        getSubjectName(question);
 
-      if (
-        !subjectId ||
-        subjectId ===
-          ENGLISH_SUBJECT_ID ||
-        subjectId ===
-          LEKKI_HEADMASTER_SUBJECT_ID
-      ) {
+      if (!subjectId) {
         continue;
       }
 
@@ -173,87 +191,80 @@ export function ExamRunner({
     }
 
     /*
-     * The API locks the paper in this order:
+     * Keep the actual subject order returned by
+     * the challenge paper.
      *
-     * English
-     * Lekki Headmaster
-     * Student Subject 1
-     * Student Subject 2
-     * Student Subject 3
-     *
-     * We preserve the order in which the subject groups
-     * first appear in the returned question list.
+     * Each selected subject should contain 40
+     * questions.
      */
 
-    const orderedSubjectIds: string[] = [];
-
-    for (const question of typedQuestions) {
-      const subjectId =
-        question.subject_id;
-
-      if (
-        !subjectId ||
-        subjectId ===
-          ENGLISH_SUBJECT_ID ||
-        subjectId ===
-          LEKKI_HEADMASTER_SUBJECT_ID
-      ) {
-        continue;
-      }
-
-      if (
-        !orderedSubjectIds.includes(
-          subjectId
+    const otherSubjectGroups =
+      Array.from(
+        subjectGroups.entries()
+      )
+        .filter(
+          ([, group]) =>
+            group.length >= 40
         )
-      ) {
-        orderedSubjectIds.push(
-          subjectId
-        );
-      }
-    }
+        .slice(0, 3);
 
-    const additionalSubjects =
-      orderedSubjectIds
-        .slice(0, 3)
-        .map((subjectId) => {
-          const grouped =
-            subjectGroups.get(
-              subjectId
-            ) ?? [];
+    const sections: CbtSection[] = [];
 
-          const first =
-            grouped[0];
+    /*
+     * English section
+     */
 
-          const name =
-            first?.subject_name ??
-            first?.subject ??
-            `Subject ${orderedSubjectIds.indexOf(subjectId) + 1}`;
+    sections.push({
+      key: 'english',
+      name: 'English',
+      count: 60,
+      questions:
+        englishQuestions.slice(0, 60),
+    });
 
-          return {
-            subjectId,
-            name: String(name),
-            questions:
-              grouped.slice(0, 40),
-          };
+    /*
+     * Selected subjects
+     */
+
+    otherSubjectGroups.forEach(
+      ([subjectId, group], index) => {
+        const firstQuestion =
+          group[0];
+
+        const subjectName =
+          firstQuestion?.subject_name ??
+          firstQuestion?.subject ??
+          `Subject ${index + 1}`;
+
+        sections.push({
+          key: `subject_${index + 1}_${subjectId}`,
+          name: subjectName,
+          count: 40,
+          questions:
+            group.slice(0, 40),
         });
+      }
+    );
 
     /*
      * -----------------------------------------------------
-     * FALLBACK FOR MISSING SUBJECT METADATA
+     * FALLBACK
      * -----------------------------------------------------
      *
-     * The challenge API already creates the questions in
-     * the correct order. If subject metadata is missing,
-     * use the locked 180-question order instead of showing
-     * "No questions loaded".
+     * If subject metadata is unavailable, the API already
+     * creates the paper in this order:
+     *
+     * 0 - 59   English
+     * 60 - 99  Subject 1
+     * 100-139  Subject 2
+     * 140-179  Subject 3
      */
 
     if (
-      englishQuestions.length !== 50 ||
-      lekkiQuestions.length !== 10 ||
-      additionalSubjects.length !== 3
+      sections.length < 4 &&
+      typedQuestions.length >= 180
     ) {
-      return [
+      const fallbackSections: CbtSection[] = [
         {
           key: 'english',
           name: 'English',
@@ -283,66 +294,36 @@ export function ExamRunner({
             typedQuestions.slice(140, 180),
         },
       ];
+
+      return fallbackSections;
     }
 
-    /*
-     * -----------------------------------------------------
-     * NORMAL CORRECT CBT STRUCTURE
-     * -----------------------------------------------------
-     */
-
-    return [
-      {
-        key: 'english',
-        name: 'English',
-        count: 60,
-        questions: [
-          ...englishQuestions.slice(0, 50),
-          ...lekkiQuestions.slice(0, 10),
-        ],
-      },
-      {
-        key: 'subject_1',
-        name:
-          additionalSubjects[0].name,
-        count: 40,
-        questions:
-          additionalSubjects[0].questions,
-      },
-      {
-        key: 'subject_2',
-        name:
-          additionalSubjects[1].name,
-        count: 40,
-        questions:
-          additionalSubjects[1].questions,
-      },
-      {
-        key: 'subject_3',
-        name:
-          additionalSubjects[2].name,
-        count: 40,
-        questions:
-          additionalSubjects[2].questions,
-      },
-    ];
+    return sections;
   }, [questions, mode]);
 
   /*
    * =====================================================
-   * CURRENT SECTION
+   * ACTIVE SECTION
    * =====================================================
    */
 
+  const activeSection =
+    mode === 'cbt'
+      ? cbtSections.find(
+          (section) =>
+            section.key ===
+            activeSectionKey
+        ) ??
+        cbtSections[0]
+      : null;
+
   const sectionQuestions: QuestionWithSubject[] =
     mode === 'cbt'
-      ? cbtSections[
-          activeSection
-        ]?.questions ?? []
+      ? activeSection?.questions ?? []
       : (questions as QuestionWithSubject[]);
 
   /*
-   * Keep the question index inside the current section.
+   * Keep index within the current section.
    */
 
   const safeCurrentIndex =
@@ -361,7 +342,7 @@ export function ExamRunner({
 
   /*
    * =====================================================
-   * ANSWER COUNTS
+   * ANSWER COUNT
    * =====================================================
    */
 
@@ -376,7 +357,7 @@ export function ExamRunner({
 
   /*
    * =====================================================
-   * SUBMIT EXAM
+   * SUBMIT
    * =====================================================
    */
 
@@ -472,6 +453,11 @@ export function ExamRunner({
       return;
     }
 
+    /*
+     * Practice mode locks the question after
+     * feedback.
+     */
+
     if (
       mode === 'practice' &&
       feedback[currentQuestion.id]
@@ -516,6 +502,14 @@ export function ExamRunner({
         );
       }
 
+      /*
+       * Only practice mode receives immediate
+       * correct/incorrect feedback.
+       *
+       * CBT and UTME Challenge never expose
+       * the correct answer while running.
+       */
+
       if (
         mode === 'practice' &&
         data.correct_answer
@@ -559,6 +553,35 @@ export function ExamRunner({
         (index) =>
           index + 1
       );
+
+      return;
+    }
+
+    /*
+     * At the end of a section, move to the
+     * next section automatically.
+     */
+
+    if (mode === 'cbt') {
+      const currentSectionIndex =
+        cbtSections.findIndex(
+          (section) =>
+            section.key ===
+            activeSectionKey
+        );
+
+      const nextSection =
+        cbtSections[
+          currentSectionIndex + 1
+        ];
+
+      if (nextSection) {
+        setActiveSectionKey(
+          nextSection.key
+        );
+
+        setCurrentIndex(0);
+      }
     }
   }
 
@@ -570,18 +593,59 @@ export function ExamRunner({
         (index) =>
           index - 1
       );
+
+      return;
+    }
+
+    /*
+     * If at the beginning of a section,
+     * go to the previous section.
+     */
+
+    if (mode === 'cbt') {
+      const currentSectionIndex =
+        cbtSections.findIndex(
+          (section) =>
+            section.key ===
+            activeSectionKey
+        );
+
+      const previousSection =
+        cbtSections[
+          currentSectionIndex - 1
+        ];
+
+      if (previousSection) {
+        setActiveSectionKey(
+          previousSection.key
+        );
+
+        setCurrentIndex(
+          Math.max(
+            previousSection.questions
+              .length - 1,
+            0
+          )
+        );
+      }
     }
   }
 
   function changeSection(
-    sectionIndex: number
+    sectionKey: string
   ) {
-    setActiveSection(
-      sectionIndex
+    setActiveSectionKey(
+      sectionKey
     );
 
     setCurrentIndex(0);
   }
+
+  /*
+   * =====================================================
+   * CURRENT FEEDBACK
+   * =====================================================
+   */
 
   const currentFeedback =
     currentQuestion
@@ -589,37 +653,270 @@ export function ExamRunner({
           currentQuestion.id
         ]
       : undefined;
-                      className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition ${
-                      isCorrectOption
-                        ? 'border-emerald-500 bg-emerald-500/10'
-                        : isWrongSelected
-                        ? 'border-red-500 bg-red-500/10'
-                        : isSelected
-                        ? 'border-emerald-500 bg-emerald-500/10'
-                        : 'border-slate-700 bg-slate-800 hover:border-slate-500'
-                    }`}
-                  >
-                    <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
-                        isCorrectOption
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : isWrongSelected
-                          ? 'border-red-500 bg-red-500 text-white'
-                          : isSelected
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : 'border-slate-600 bg-slate-900 text-slate-300'
+
+  /*
+   * =====================================================
+   * NO QUESTIONS
+   * =====================================================
+   */
+
+  if (!currentQuestion) {
+    return (
+      <div className="mx-auto max-w-xl p-6">
+        <div className="rounded-2xl bg-amber-50 p-6 text-center text-amber-800">
+          <h2 className="text-lg font-bold">
+            No questions loaded.
+          </h2>
+
+          <p className="mt-2 text-sm">
+            The exam could not load the
+            questions for this section.
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              router.back()
+            }
+            className="mt-5 rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * =====================================================
+   * EXAM UI
+   * =====================================================
+   */
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
+
+        {/* TOP BAR */}
+
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-300">
+              JAMB CBT
+            </div>
+
+            {mode === 'cbt' && (
+              <div className="mt-1 text-xs text-slate-500">
+                {answeredCount}/
+                {questions.length} answered
+              </div>
+            )}
+          </div>
+
+          {durationSeconds ? (
+            <div
+              className={`rounded-full px-4 py-2 text-sm font-bold ${
+                timer.isLow
+                  ? 'bg-red-600 text-white'
+                  : 'bg-emerald-600 text-white'
+              }`}
+            >
+              ⏱ {timer.display}
+            </div>
+          ) : (
+            <div className="rounded-full bg-slate-800 px-4 py-2 text-sm text-slate-300">
+              Untimed
+            </div>
+          )}
+        </div>
+
+        {/* CBT SUBJECT TABS */}
+
+        {mode === 'cbt' &&
+          cbtSections.length > 0 && (
+            <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-700">
+              {cbtSections.map(
+                (section) => {
+                  const active =
+                    activeSectionKey ===
+                    section.key;
+
+                  const answered =
+                    section.questions.filter(
+                      (question) =>
+                        !!answers[
+                          question.id
+                        ]
+                    ).length;
+
+                  return (
+                    <button
+                      key={section.key}
+                      type="button"
+                      onClick={() =>
+                        changeSection(
+                          section.key
+                        )
+                      }
+                      className={`whitespace-nowrap px-4 py-3 text-sm font-semibold transition ${
+                        active
+                          ? 'border-b-4 border-emerald-500 text-emerald-400'
+                          : 'text-slate-300 hover:text-white'
                       }`}
                     >
-                      {letter}
-                    </span>
+                      {section.name}
 
-                    <span className="flex-1 pt-1 text-sm leading-relaxed text-slate-100 sm:text-base">
-                      {optionText}
-                    </span>
-                  </button>
-                );
-              }
-            )}
+                      <span className="ml-1 text-xs opacity-60">
+                        {answered}/
+                        {section.count}
+                      </span>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          )}
+
+        {/* QUESTION HEADER */}
+
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="rounded-full border-2 border-slate-500 px-5 py-2.5">
+            <span className="font-bold">
+              Question{' '}
+              {safeCurrentIndex + 1}
+              /
+              {sectionQuestions.length}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setShowCalculator(
+                (value) => !value
+              )
+            }
+            className="rounded-full border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+          >
+            🧮 Calculator
+          </button>
+        </div>
+
+        {/* CALCULATOR */}
+
+        {showCalculator && (
+          <div className="mb-5 rounded-2xl border border-slate-700 bg-slate-900 p-4">
+            <Calculator />
+          </div>
+        )}
+
+        {/* QUESTION CARD */}
+
+        <div className="rounded-2xl bg-slate-900 p-5 sm:p-7">
+
+          <div className="mb-6 flex items-center justify-between">
+            <span className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-400">
+              {activeSection?.name ??
+                'Question'}
+            </span>
+
+            <span className="text-xs text-slate-500">
+              {answeredInCurrentSection}/
+              {sectionQuestions.length}
+              {' '}answered
+            </span>
+          </div>
+
+          <p className="mb-7 text-lg font-medium leading-relaxed text-white sm:text-xl">
+            {currentQuestion.question_text}
+          </p>
+
+          {/* OPTIONS */}
+
+          <div className="space-y-4">
+            {(
+              [
+                'A',
+                'B',
+                'C',
+                'D',
+              ] as const
+            ).map((letter) => {
+              const optionText =
+                currentQuestion[
+                  `option_${letter.toLowerCase()}` as
+                    | 'option_a'
+                    | 'option_b'
+                    | 'option_c'
+                    | 'option_d'
+                ];
+
+              const isSelected =
+                answers[
+                  currentQuestion.id
+                ] === letter;
+
+              const showResult =
+                mode ===
+                  'practice' &&
+                !!currentFeedback;
+
+              const isCorrectOption =
+                showResult &&
+                currentFeedback.correct_answer ===
+                  letter;
+
+              const isWrongSelected =
+                showResult &&
+                isSelected &&
+                !currentFeedback.is_correct;
+
+              return (
+                <button
+                  key={letter}
+                  type="button"
+                  onClick={() =>
+                    selectAnswer(
+                      letter
+                    )
+                  }
+                                    disabled={
+                    answerLoading ||
+                    submitting ||
+                    (mode ===
+                      'practice' &&
+                      !!currentFeedback)
+                  }
+                  className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition ${
+                    isCorrectOption
+                      ? 'border-emerald-500 bg-emerald-500/10'
+                      : isWrongSelected
+                      ? 'border-red-500 bg-red-500/10'
+                      : isSelected
+                      ? 'border-emerald-500 bg-emerald-500/10'
+                      : 'border-slate-700 bg-slate-800 hover:border-slate-500'
+                  }`}
+                >
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
+                      isCorrectOption
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : isWrongSelected
+                        ? 'border-red-500 bg-red-500 text-white'
+                        : isSelected
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-slate-600 bg-slate-900 text-slate-300'
+                    }`}
+                  >
+                    {letter}
+                  </span>
+
+                  <span className="flex-1 pt-1 text-sm leading-relaxed text-slate-100 sm:text-base">
+                    {optionText}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* PRACTICE FEEDBACK */}
@@ -646,156 +943,160 @@ export function ExamRunner({
                 )}
               </div>
             )}
-        </div>
 
-        {/* NAVIGATION */}
+          {/* NAVIGATION */}
 
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={goPrevious}
-            disabled={
-              safeCurrentIndex === 0 ||
-              submitting
-            }
-          >
-            Previous
-          </Button>
-
-          <span className="text-sm text-slate-400">
-            {answeredInCurrentSection}/
-            {sectionQuestions.length} answered
-          </span>
-
-          {safeCurrentIndex <
-          sectionQuestions.length - 1 ? (
-            <Button
+          <div className="mt-8 flex items-center justify-between gap-3 border-t border-slate-800 pt-5">
+            <button
               type="button"
-              onClick={goNext}
-              disabled={submitting}
-            >
-              Next
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={() =>
-                setShowConfirm(true)
+              onClick={goPrevious}
+              disabled={
+                submitting ||
+                (safeCurrentIndex === 0 &&
+                  (mode !== 'cbt' ||
+                    !cbtSections[
+                      cbtSections.findIndex(
+                        (section) =>
+                          section.key ===
+                          activeSectionKey
+                      ) - 1
+                    ]))
               }
-              loading={submitting}
+              className="rounded-xl border border-slate-700 bg-slate-800 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Submit Exam
-            </Button>
-          )}
-        </div>
+              ← Previous
+            </button>
 
-        {/* QUESTION NAVIGATOR */}
+            <div className="text-center text-xs text-slate-500">
+              {answeredInCurrentSection}/
+              {sectionQuestions.length}
+              answered
+            </div>
 
-        <div className="mt-6 rounded-2xl bg-slate-900 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-300">
-              Questions
-            </p>
-
-            <p className="text-xs text-slate-500">
-              {answeredCount}/{questions.length}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
-            {sectionQuestions.map(
-              (question, index) => {
-                const answered =
-                  !!answers[question.id];
-
-                const active =
-                  index === safeCurrentIndex;
-
-                return (
-                  <button
-                    key={question.id}
-                    type="button"
-                    onClick={() =>
-                      setCurrentIndex(index)
-                    }
-                    className={`h-9 rounded-lg text-xs font-bold transition ${
-                      active
-                        ? 'bg-emerald-500 text-white'
-                        : answered
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    {index + 1}
-                  </button>
-                );
-              }
+            {safeCurrentIndex <
+              sectionQuestions.length - 1 ||
+            (mode === 'cbt' &&
+              cbtSections.findIndex(
+                (section) =>
+                  section.key ===
+                  activeSectionKey
+              ) <
+                cbtSections.length - 1) ? (
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={
+                  submitting ||
+                  answerLoading
+                }
+                className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next →
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  handleSubmit(false)
+                }
+                disabled={
+                  submitting ||
+                  answerLoading
+                }
+                className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting
+                  ? 'Submitting...'
+                  : 'Submit Exam'}
+              </button>
             )}
           </div>
         </div>
 
-        {/* CALCULATOR */}
+        {/* QUESTION NAVIGATOR */}
 
-        {showCalculator && (
-          <div className="fixed bottom-4 right-4 z-50">
-            <Calculator />
+        {mode === 'cbt' && (
+          <div className="mt-5 rounded-2xl bg-slate-900 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-200">
+                Question Navigator
+              </h3>
+
+              <span className="text-xs text-slate-500">
+                {answeredCount}/{questions.length}{' '}
+                answered
+              </span>
+            </div>
+
+            <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+              {sectionQuestions.map(
+                (question, index) => {
+                  const answered =
+                    !!answers[question.id];
+
+                  const active =
+                    index ===
+                    safeCurrentIndex;
+
+                  return (
+                    <button
+                      key={question.id}
+                      type="button"
+                      onClick={() =>
+                        setCurrentIndex(
+                          index
+                        )
+                      }
+                      className={`h-10 rounded-lg text-sm font-semibold transition ${
+                        active
+                          ? 'bg-emerald-500 text-white ring-2 ring-emerald-300'
+                          : answered
+                          ? 'bg-emerald-900 text-emerald-300 hover:bg-emerald-800'
+                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      {index + 1}
+                    </button>
+                  );
+                }
+              )}
+            </div>
           </div>
         )}
 
-        {/* SUBMIT CONFIRMATION */}
+        {/* SUBMIT BUTTON */}
 
-        {showConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-2xl">
-              <h2 className="text-xl font-bold">
-                Submit Exam?
-              </h2>
+        {mode === 'cbt' && (
+          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-slate-200">
+                  Ready to submit?
+                </p>
 
-              <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                You have answered{' '}
-                <strong>
-                  {answeredCount}
-                </strong>{' '}
-                out of{' '}
-                <strong>
-                  {questions.length}
-                </strong>{' '}
-                questions.
-              </p>
-
-              {answeredCount <
-                questions.length && (
-                <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-                  You still have unanswered
-                  questions. Are you sure you
-                  want to submit?
-                </div>
-              )}
-
-              <div className="mt-6 flex justify-end gap-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() =>
-                    setShowConfirm(false)
-                  }
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setShowConfirm(false);
-                    handleSubmit(false);
-                  }}
-                  loading={submitting}
-                >
-                  Submit
-                </Button>
+                <p className="mt-1 text-sm text-slate-500">
+                  You have answered{' '}
+                  {answeredCount} of{' '}
+                  {questions.length}{' '}
+                  questions.
+                </p>
               </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleSubmit(false)
+                }
+                disabled={
+                  submitting ||
+                  answerLoading
+                }
+                className="rounded-xl bg-red-600 px-6 py-3 font-bold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting
+                  ? 'Submitting...'
+                  : 'Submit Exam'}
+              </button>
             </div>
           </div>
         )}
@@ -803,3 +1104,5 @@ export function ExamRunner({
     </div>
   );
 }
+                  
+              
