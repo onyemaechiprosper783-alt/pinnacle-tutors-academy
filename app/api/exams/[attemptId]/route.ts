@@ -47,43 +47,64 @@ export async function GET(
     );
   }
 
-  /*
-   * =====================================================
-   * CHALLENGE INFORMATION
-   * =====================================================
-   */
-
-  const isChallenge =
-    attempt.mode === 'utme_challenge';
-
   const isStudent =
     caller.role === 'student';
 
+  /*
+   * =====================================================
+   * CORRECT UTME CHALLENGE DETECTION
+   * =====================================================
+   *
+   * UTME Challenge is stored as:
+   *
+   *   mode = cbt
+   *
+   * and has:
+   *
+   *   config.round_id
+   *
+   * or:
+   *
+   *   config.challenge.round_id
+   */
+
+  const config =
+    (attempt.config ?? {}) as {
+      round_id?: string | null;
+      results_released?: boolean;
+      challenge?: {
+        round_id?: string | null;
+        participant_id?: string | null;
+      } | null;
+    };
+
+  const roundId =
+    config.round_id ??
+    config.challenge?.round_id ??
+    null;
+
+  const isChallenge =
+    attempt.mode === 'cbt' &&
+    !!roundId;
+
   const resultsReleased =
-    Boolean(
-      (
-        attempt.config as {
-          results_released?: boolean;
-        } | null
-      )?.results_released
-    );
+    config.results_released === true;
 
   const isSubmitted =
     attempt.status !== 'in_progress';
 
   /*
    * =====================================================
-   * IMPORTANT:
-   *
-   * DO NOT HIDE QUESTIONS WHILE THE CHALLENGE
-   * IS STILL IN PROGRESS.
-   *
-   * The student must receive the 180 questions
-   * in order to take the CBT.
-   *
-   * Challenge results are hidden ONLY after
-   * submission until the administrator releases them.
+   * HIDE UTME CHALLENGE RESULTS
    * =====================================================
+   *
+   * After submission, students must NOT receive:
+   *
+   * - score
+   * - correct answers
+   * - incorrect answers
+   * - rank
+   * - answer review
    */
 
   if (
@@ -98,8 +119,7 @@ export async function GET(
         mode: attempt.mode,
         status: attempt.status,
         started_at: attempt.started_at,
-        submitted_at:
-          attempt.submitted_at,
+        submitted_at: attempt.submitted_at,
         duration_seconds:
           attempt.duration_seconds,
         time_used_seconds:
@@ -130,15 +150,13 @@ export async function GET(
     error: attemptQuestionsError,
   } = await admin
     .from('attempt_questions')
-    .select(
-      `
-        id,
-        question_id,
-        position,
-        selected_answer,
-        is_correct
-      `
-    )
+    .select(`
+      id,
+      question_id,
+      position,
+      selected_answer,
+      is_correct
+    `)
     .eq('attempt_id', attemptId)
     .order('position', {
       ascending: true,
@@ -164,12 +182,6 @@ export async function GET(
       (aq) => aq.question_id
     );
 
-  /*
-   * =====================================================
-   * MAKE SURE QUESTIONS EXIST
-   * =====================================================
-   */
-
   if (questionIds.length === 0) {
     return NextResponse.json(
       {
@@ -182,38 +194,22 @@ export async function GET(
 
   /*
    * =====================================================
-   * QUESTION DATA
+   * LOAD QUESTIONS
    * =====================================================
-   *
-   * While the exam is in progress:
-   *
-   *   questions_public
-   *
-   * is used so the correct answer is not exposed.
-   *
-   * After submission:
-   *
-   *   questions
-   *
-   * can be used so results can include the answer key.
    */
 
   const {
     data: questions,
     error: questionsError,
-  } = await admin
-    .from(
-      isSubmitted
-        ? 'questions'
-        : 'questions_public'
-    )
-    .select(
-      '*, subjects(name)'
-    )
-    .in(
-      'id',
-      questionIds
-    );
+  } =
+    await admin
+      .from(
+        isSubmitted
+          ? 'questions'
+          : 'questions_public'
+      )
+      .select('*, subjects(name)')
+      .in('id', questionIds);
 
   if (questionsError) {
     console.error(
@@ -232,19 +228,8 @@ export async function GET(
 
   if (
     !questions ||
-    questions.length !==
-      questionIds.length
+    questions.length !== questionIds.length
   ) {
-    console.error(
-      'Question count mismatch:',
-      {
-        requested:
-          questionIds.length,
-        loaded:
-          questions?.length ?? 0,
-      }
-    );
-
     return NextResponse.json(
       {
         error:
@@ -256,7 +241,7 @@ export async function GET(
 
   /*
    * =====================================================
-   * PRESERVE ATTEMPT QUESTION ORDER
+   * PRESERVE QUESTION ORDER
    * =====================================================
    */
 
@@ -274,7 +259,6 @@ export async function GET(
     (attemptQuestions ?? []).map(
       (aq) => ({
         ...aq,
-
         question:
           questionMap.get(
             aq.question_id
@@ -282,18 +266,11 @@ export async function GET(
       })
     );
 
-  /*
-   * =====================================================
-   * VERIFY EVERY QUESTION WAS FOUND
-   * =====================================================
-   */
-
-  const missingQuestion =
+  if (
     combined.some(
       (aq) => !aq.question
-    );
-
-  if (missingQuestion) {
+    )
+  ) {
     return NextResponse.json(
       {
         error:
@@ -322,18 +299,19 @@ export async function GET(
       combined.reduce(
         (acc, aq) => {
           const subjectName =
-            aq.question?.subjects
-              ?.name ??
+            aq.question?.subjects?.name ??
             'Unknown';
 
-          acc[subjectName] ??= {
-            correct: 0,
-            total: 0,
-          };
+          if (!acc[subjectName]) {
+            acc[subjectName] = {
+              correct: 0,
+              total: 0,
+            };
+          }
 
           acc[subjectName].total += 1;
 
-          if (aq.is_correct) {
+          if (aq.is_correct === true) {
             acc[subjectName].correct += 1;
           }
 
@@ -348,28 +326,6 @@ export async function GET(
         >
       );
   }
-
-  /*
-   * =====================================================
-   * CHALLENGE CONFIG
-   * =====================================================
-   */
-
-  const challengeConfig =
-    isChallenge
-      ? (
-          attempt.config as {
-            challenge?: {
-              participant_id?: string;
-              english_questions?: number;
-              lekki_headmaster_questions?: number;
-              additional_subject_questions?: number;
-              total_questions?: number;
-              locked?: boolean;
-            };
-          } | null
-        )?.challenge ?? null
-      : null;
 
   /*
    * =====================================================
@@ -394,6 +350,8 @@ export async function GET(
       !resultsReleased,
 
     challenge_config:
-      challengeConfig,
+      isChallenge
+        ? config.challenge ?? null
+        : null,
   });
 }
