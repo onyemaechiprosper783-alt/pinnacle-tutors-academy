@@ -39,7 +39,12 @@ const startSchema = z.object({
     .optional(),
 
   exam_type: z
-    .enum(['jamb', 'waec', 'utme', 'general'])
+    .enum([
+      'jamb',
+      'waec',
+      'utme',
+      'general',
+    ])
     .optional(),
 
   year: z
@@ -75,37 +80,59 @@ const startSchema = z.object({
         .optional(),
 
       other_subject_ids: z
-        .array(z.string().uuid())
+        .array(
+          z.string().uuid()
+        )
         .length(3)
         .optional(),
     })
     .optional(),
 });
 
-const DEFAULT_DURATION: Record<string, number> = {
+const DEFAULT_DURATION: Record<
+  string,
+  number
+> = {
   cbt: 120 * 60,
   mock: 90 * 60,
   practice: 0,
-  utme_challenge: 15 * 60,
+
+  // UTME Challenge is 120 minutes.
+  // For the challenge, this will be
+  // replaced with the remaining time
+  // calculated from activated_at.
+  utme_challenge: 120 * 60,
 };
 
-export async function POST(request: Request) {
-  const caller = await getCurrentProfile();
+export async function POST(
+  request: Request
+) {
+  const caller =
+    await getCurrentProfile();
 
   if (!caller) {
     return NextResponse.json(
-      { error: 'Not authorized.' },
+      {
+        error:
+          'Not authorized.',
+      },
       { status: 401 }
     );
   }
 
-  const body = await request.json().catch(() => null);
+  const body = await request
+    .json()
+    .catch(() => null);
 
-  const parsed = startSchema.safeParse(body);
+  const parsed =
+    startSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Invalid exam configuration.' },
+      {
+        error:
+          'Invalid exam configuration.',
+      },
       { status: 400 }
     );
   }
@@ -122,34 +149,176 @@ export async function POST(request: Request) {
     cbt_config,
   } = parsed.data;
 
-  const isSpecialCbt =
-    mode === 'cbt' && !!cbt_config;
+  const admin =
+    createAdminClient();
 
-  let questionIds: string[] = [];
+  /*
+   * ====================================================
+   * UTME CHALLENGE TIME
+   * ====================================================
+   *
+   * The challenge timer starts when
+   * the ADMIN activates the round.
+   *
+   * It does NOT start from the
+   * student's attempt time.
+   */
+  let challengeRound:
+    | {
+        id: string;
+        title: string;
+        is_active: boolean;
+        activated_at: string | null;
+        closes_at: string | null;
+        duration_seconds:
+          | number
+          | null;
+      }
+    | null = null;
+
+  let challengeRemainingSeconds:
+    | number
+    | null = null;
+
+  if (mode === 'utme_challenge') {
+    if (!round_id) {
+      return NextResponse.json(
+        {
+          error:
+            'Challenge round is required.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const {
+      data: round,
+      error: roundError,
+    } = await admin
+      .from('challenge_rounds')
+      .select(`
+        id,
+        title,
+        is_active,
+        activated_at,
+        closes_at,
+        duration_seconds
+      `)
+      .eq('id', round_id)
+      .single();
+
+    if (
+      roundError ||
+      !round
+    ) {
+      console.error(
+        'Challenge round lookup error:',
+        roundError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            'Challenge round not found.',
+        },
+        { status: 404 }
+      );
+    }
+
+    challengeRound =
+      round;
+
+    if (!round.is_active) {
+      return NextResponse.json(
+        {
+          error:
+            'This challenge has not been activated yet.',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!round.activated_at) {
+      return NextResponse.json(
+        {
+          error:
+            'This challenge does not have an activation time.',
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * GLOBAL CHALLENGE CLOCK
+     */
+    const activatedAt =
+      new Date(
+        round.activated_at
+      ).getTime();
+
+    const now =
+      Date.now();
+
+    const elapsedSeconds =
+      Math.floor(
+        (now - activatedAt) /
+          1000
+      );
+
+    const totalChallengeSeconds =
+      round.duration_seconds ||
+      120 * 60;
+
+    const remainingSeconds =
+      totalChallengeSeconds -
+      elapsedSeconds;
+
+    /*
+     * If the global challenge
+     * clock has already finished,
+     * don't allow a new attempt.
+     *
+     * Existing attempts will be
+     * automatically submitted by
+     * the submission/timer system.
+     */
+    if (remainingSeconds <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            'The challenge time has already ended.',
+        },
+        { status: 400 }
+      );
+    }
+
+    challengeRemainingSeconds =
+      remainingSeconds;
+  }
+
+  const isSpecialCbt =
+    mode === 'cbt' &&
+    !!cbt_config;
+
+  let questionIds:
+    string[] = [];
 
   /*
    * ====================================================
    * SPECIAL JAMB CBT
-   * ====================================================
-   *
-   * English Language       = 50
-   * Lekki Headmaster       = 10
-   * Subject 1              = 40
-   * Subject 2              = 40
-   * Subject 3              = 40
-   *
-   * TOTAL                  = 180
-   *
-   * TIME                   = 120 MINUTES
    * ====================================================
    */
 
   try {
     if (isSpecialCbt) {
       const otherSubjectIds =
-        cbt_config.other_subject_ids ?? [];
+        cbt_config
+          ?.other_subject_ids ??
+        [];
 
-      if (otherSubjectIds.length !== 3) {
+      if (
+        otherSubjectIds.length !== 3
+      ) {
         return NextResponse.json(
           {
             error:
@@ -159,9 +328,6 @@ export async function POST(request: Request) {
         );
       }
 
-      /*
-       * English and Lekki Headmaster are automatic.
-       */
       if (
         otherSubjectIds.includes(
           ENGLISH_SUBJECT_ID
@@ -179,26 +345,20 @@ export async function POST(request: Request) {
         );
       }
 
-      /*
-       * The client may send English as 60 because the
-       * screen displays English = 60 total.
-       *
-       * Internally this means:
-       *
-       * 50 normal English
-       * +
-       * 10 Lekki Headmaster
-       *
-       * Therefore both 50 and 60 are accepted here.
-       */
       const requestedEnglish =
-        cbt_config.english_question_count ?? 60;
+        cbt_config
+          ?.english_question_count ??
+        60;
 
       const lekkiCount =
-        cbt_config.lekki_headmaster_count ?? 10;
+        cbt_config
+          ?.lekki_headmaster_count ??
+        10;
 
       const otherCount =
-        cbt_config.other_subject_question_count ?? 40;
+        cbt_config
+          ?.other_subject_question_count ??
+        40;
 
       if (
         requestedEnglish !== 50 &&
@@ -233,50 +393,56 @@ export async function POST(request: Request) {
         );
       }
 
-      /*
-       * Select exact numbers for every subject.
-       */
-      const subjectQuestionCounts = [
-        {
-          subjectId: ENGLISH_SUBJECT_ID,
-          count: 50,
-        },
-        {
-          subjectId:
+      const subjectQuestionCounts =
+        [
+          {
+            subjectId:
+              ENGLISH_SUBJECT_ID,
+            count: 50,
+          },
+          {
+            subjectId:
+              LEKKI_HEADMASTER_SUBJECT_ID,
+            count: 10,
+          },
+          {
+            subjectId:
+              otherSubjectIds[0],
+            count: 40,
+          },
+          {
+            subjectId:
+              otherSubjectIds[1],
+            count: 40,
+          },
+          {
+            subjectId:
+              otherSubjectIds[2],
+            count: 40,
+          },
+        ];
+
+      questionIds =
+        await selectQuestions({
+          subjectIds: [
+            ENGLISH_SUBJECT_ID,
             LEKKI_HEADMASTER_SUBJECT_ID,
-          count: 10,
-        },
-        {
-          subjectId: otherSubjectIds[0],
-          count: 40,
-        },
-        {
-          subjectId: otherSubjectIds[1],
-          count: 40,
-        },
-        {
-          subjectId: otherSubjectIds[2],
-          count: 40,
-        },
-      ];
+            ...otherSubjectIds,
+          ],
 
-      questionIds = await selectQuestions({
-        subjectIds: [
-          ENGLISH_SUBJECT_ID,
-          LEKKI_HEADMASTER_SUBJECT_ID,
-          ...otherSubjectIds,
-        ],
+          mode: 'cbt',
 
-        mode: 'cbt',
+          questionCount: 180,
 
-        questionCount: 180,
+          subjectQuestionCounts,
 
-        subjectQuestionCounts,
+          examType: 'jamb',
+        });
 
-        examType: 'jamb',
-      });
-
-      if (questionIds.length !== 180) {
+      if (
+        questionIds.length !==
+        180
+      ) {
         return NextResponse.json(
           {
             error:
@@ -285,20 +451,6 @@ export async function POST(request: Request) {
           { status: 404 }
         );
       }
-
-      /*
-       * IMPORTANT:
-       *
-       * selectQuestions normally shuffles everything.
-       *
-       * We now load the questions and arrange them into
-       * CBT sections:
-       *
-       * English + Lekki
-       * Subject 1
-       * Subject 2
-       * Subject 3
-       */
     } else {
       /*
        * ==================================================
@@ -306,14 +458,18 @@ export async function POST(request: Request) {
        * ==================================================
        */
 
-      questionIds = await selectQuestions({
-        subjectIds: subject_ids,
-        mode,
-        questionCount: question_count,
-        difficulty,
-        examType: exam_type,
-        year,
-      });
+      questionIds =
+        await selectQuestions({
+          subjectIds:
+            subject_ids,
+          mode,
+          questionCount:
+            question_count,
+          difficulty,
+          examType:
+            exam_type,
+          year,
+        });
     }
   } catch (error) {
     return NextResponse.json(
@@ -327,7 +483,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (questionIds.length === 0) {
+  if (
+    questionIds.length === 0
+  ) {
     return NextResponse.json(
       {
         error:
@@ -336,8 +494,6 @@ export async function POST(request: Request) {
       { status: 404 }
     );
   }
-
-  const admin = createAdminClient();
 
   /*
    * ====================================================
@@ -348,12 +504,18 @@ export async function POST(request: Request) {
   const {
     data: questions,
     error: questionsError,
-  } = await admin
-    .from('questions_public')
-    .select('*')
-    .in('id', questionIds);
+  } =
+    await admin
+      .from('questions_public')
+      .select('*')
+      .in('id', questionIds);
 
   if (questionsError) {
+    console.error(
+      'Questions load error:',
+      questionsError
+    );
+
     return NextResponse.json(
       {
         error:
@@ -363,7 +525,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!questions || questions.length !== questionIds.length) {
+  if (
+    !questions ||
+    questions.length !==
+      questionIds.length
+  ) {
     return NextResponse.json(
       {
         error:
@@ -375,29 +541,21 @@ export async function POST(request: Request) {
 
   /*
    * ====================================================
-   * CREATE ORDER
+   * ORDER QUESTIONS
    * ====================================================
-   *
-   * CBT order:
-   *
-   * 1 - 50   English
-   * 51 - 60  Lekki Headmaster
-   * 61 - 100 Subject 1
-   * 101-140  Subject 2
-   * 141-180  Subject 3
-   *
-   * The UI will later display these as:
-   *
-   * English | Biology | Chemistry | Physics
-   *
-   * instead of a 1-180 question grid.
    */
 
-  let orderedQuestions = [...questions];
+  let orderedQuestions =
+    [...questions];
 
-  if (isSpecialCbt && cbt_config) {
+  if (
+    isSpecialCbt &&
+    cbt_config
+  ) {
     const otherSubjectIds =
-      cbt_config.other_subject_ids ?? [];
+      cbt_config
+        .other_subject_ids ??
+      [];
 
     const englishQuestions =
       questions.filter(
@@ -435,11 +593,16 @@ export async function POST(request: Request) {
       );
 
     if (
-      englishQuestions.length !== 50 ||
-      lekkiQuestions.length !== 10 ||
-      subject1Questions.length !== 40 ||
-      subject2Questions.length !== 40 ||
-      subject3Questions.length !== 40
+      englishQuestions.length !==
+        50 ||
+      lekkiQuestions.length !==
+        10 ||
+      subject1Questions.length !==
+        40 ||
+      subject2Questions.length !==
+        40 ||
+      subject3Questions.length !==
+        40
     ) {
       return NextResponse.json(
         {
@@ -458,35 +621,50 @@ export async function POST(request: Request) {
       ...subject3Questions,
     ];
   } else {
-    /*
-     * Preserve the randomized order returned by
-     * selectQuestions for normal exams.
-     */
-    const orderMap = new Map(
-      questionIds.map((id, index) => [
-        id,
-        index,
-      ])
-    );
+    const orderMap =
+      new Map(
+        questionIds.map(
+          (id, index) => [
+            id,
+            index,
+          ]
+        )
+      );
 
     orderedQuestions.sort(
       (a, b) =>
-        (orderMap.get(a.id) ?? 0) -
-        (orderMap.get(b.id) ?? 0)
+        (orderMap.get(
+          a.id
+        ) ?? 0) -
+        (orderMap.get(
+          b.id
+        ) ?? 0)
     );
   }
 
   /*
    * ====================================================
-   * FINAL CBT CONFIGURATION
+   * FINAL CONFIGURATION
    * ====================================================
    */
 
   const finalQuestionCount =
-    isSpecialCbt ? 180 : question_count;
+    mode === 'utme_challenge'
+      ? 180
+      : isSpecialCbt
+      ? 180
+      : question_count;
 
+  /*
+   * IMPORTANT:
+   *
+   * UTME Challenge gets the REMAINING
+   * time from the global round clock.
+   */
   const finalDuration =
-    isSpecialCbt
+    mode === 'utme_challenge'
+      ? challengeRemainingSeconds!
+      : isSpecialCbt
       ? 120 * 60
       : duration_seconds ??
         DEFAULT_DURATION[mode];
@@ -497,93 +675,164 @@ export async function POST(request: Request) {
    * ====================================================
    */
 
-  const { data: attempt, error: attemptError } =
-    await admin
-      .from('exam_attempts')
-      .insert({
-        student_id: caller.id,
+  const {
+    data: attempt,
+    error: attemptError,
+  } = await admin
+    .from('exam_attempts')
+    .insert({
+      student_id:
+        caller.id,
 
-        mode,
+      mode,
 
-        subject_ids: isSpecialCbt
+      subject_ids:
+        mode ===
+        'utme_challenge'
+          ? subject_ids
+          : isSpecialCbt
           ? [
               ENGLISH_SUBJECT_ID,
               LEKKI_HEADMASTER_SUBJECT_ID,
-              ...(cbt_config?.other_subject_ids ?? []),
+              ...(cbt_config
+                ?.other_subject_ids ??
+                []),
             ]
           : subject_ids,
 
-        config: {
-          question_count:
-            finalQuestionCount,
+      config: {
+        question_count:
+          finalQuestionCount,
 
-          difficulty,
+        difficulty,
 
-          exam_type: isSpecialCbt
+        exam_type:
+          isSpecialCbt
             ? 'jamb'
             : exam_type,
 
-          year,
+        year,
 
-          round_id,
+        round_id,
 
-          cbt: isSpecialCbt
+        /*
+         * Store the global challenge
+         * deadline information.
+         */
+        challenge:
+          mode ===
+          'utme_challenge'
             ? {
-                english_questions: 50,
+                round_id:
+                  challengeRound
+                    ?.id,
 
-                lekki_headmaster_questions: 10,
+                activated_at:
+                  challengeRound
+                    ?.activated_at,
 
-                english_section_total: 60,
+                total_duration_seconds:
+                  challengeRound
+                    ?.duration_seconds ??
+                  120 * 60,
 
-                questions_per_other_subject: 40,
+                remaining_seconds_at_start:
+                  challengeRemainingSeconds,
 
-                other_subject_ids:
-                  cbt_config?.other_subject_ids,
-
-                total_questions: 180,
-
-                duration_minutes: 120,
-
-                sections: [
-                  {
-                    key: 'english',
-                    label: 'English',
-                    question_count: 60,
-                  },
-                  {
-                    key: 'subject_1',
-                    subject_id:
-                      cbt_config?.other_subject_ids?.[0],
-                    question_count: 40,
-                  },
-                  {
-                    key: 'subject_2',
-                    subject_id:
-                      cbt_config?.other_subject_ids?.[1],
-                    question_count: 40,
-                  },
-                  {
-                    key: 'subject_3',
-                    subject_id:
-                      cbt_config?.other_subject_ids?.[2],
-                    question_count: 40,
-                  },
-                ],
+                global_deadline:
+                  new Date(
+                    new Date(
+                      challengeRound!
+                        .activated_at!
+                    ).getTime() +
+                      (challengeRound!
+                        .duration_seconds ??
+                        120 * 60) *
+                        1000
+                  ).toISOString(),
               }
             : null,
-        },
 
-        duration_seconds:
-          finalDuration,
+        cbt: isSpecialCbt
+          ? {
+              english_questions:
+                50,
 
-        status: 'in_progress',
-      })
-      .select(
-        'id, started_at, duration_seconds'
-      )
-      .single();
+              lekki_headmaster_questions:
+                10,
 
-  if (attemptError || !attempt) {
+              english_section_total:
+                60,
+
+              questions_per_other_subject:
+                40,
+
+              other_subject_ids:
+                cbt_config
+                  ?.other_subject_ids,
+
+              total_questions:
+                180,
+
+              duration_minutes:
+                120,
+
+              sections: [
+                {
+                  key: 'english',
+                  label: 'English',
+                  question_count:
+                    60,
+                },
+                {
+                  key: 'subject_1',
+                  subject_id:
+                    cbt_config
+                      ?.other_subject_ids?.[0],
+                  question_count:
+                    40,
+                },
+                {
+                  key: 'subject_2',
+                  subject_id:
+                    cbt_config
+                      ?.other_subject_ids?.[1],
+                  question_count:
+                    40,
+                },
+                {
+                  key: 'subject_3',
+                  subject_id:
+                    cbt_config
+                      ?.other_subject_ids?.[2],
+                  question_count:
+                    40,
+                },
+              ],
+            }
+          : null,
+      },
+
+      duration_seconds:
+        finalDuration,
+
+      status:
+        'in_progress',
+    })
+    .select(
+      'id, started_at, duration_seconds'
+    )
+    .single();
+
+  if (
+    attemptError ||
+    !attempt
+  ) {
+    console.error(
+      'Attempt creation error:',
+      attemptError
+    );
+
     return NextResponse.json(
       {
         error:
@@ -601,22 +850,38 @@ export async function POST(request: Request) {
 
   const attemptQuestionRows =
     orderedQuestions.map(
-      (question, index) => ({
-        attempt_id: attempt.id,
-        question_id: question.id,
-        position: index + 1,
+      (
+        question,
+        index
+      ) => ({
+        attempt_id:
+          attempt.id,
+
+        question_id:
+          question.id,
+
+        position:
+          index + 1,
       })
     );
 
   const {
-    error: attemptQuestionsError,
+    error:
+      attemptQuestionsError,
   } = await admin
     .from('attempt_questions')
     .insert(
       attemptQuestionRows
     );
 
-  if (attemptQuestionsError) {
+  if (
+    attemptQuestionsError
+  ) {
+    console.error(
+      'Attempt questions error:',
+      attemptQuestionsError
+    );
+
     return NextResponse.json(
       {
         error:
@@ -628,47 +893,52 @@ export async function POST(request: Request) {
 
   /*
    * ====================================================
-   * RETURN CBT DATA
+   * CBT SECTIONS
    * ====================================================
    */
 
-  const cbtSections = isSpecialCbt
-    ? [
-        {
-          key: 'english',
-          label: 'English',
-          start: 0,
-          count: 60,
-        },
-        {
-          key: 'subject_1',
-          label: 'Subject 1',
-          start: 60,
-          count: 40,
-          subject_id:
-            cbt_config?.other_subject_ids?.[0],
-        },
-        {
-          key: 'subject_2',
-          label: 'Subject 2',
-          start: 100,
-          count: 40,
-          subject_id:
-            cbt_config?.other_subject_ids?.[1],
-        },
-        {
-          key: 'subject_3',
-          label: 'Subject 3',
-          start: 140,
-          count: 40,
-          subject_id:
-            cbt_config?.other_subject_ids?.[2],
-        },
-      ]
-    : [];
+  const cbtSections =
+    isSpecialCbt
+      ? [
+          {
+            key: 'english',
+            label: 'English',
+            start: 0,
+            count: 60,
+          },
+          {
+            key: 'subject_1',
+            label: 'Subject 1',
+            start: 60,
+            count: 40,
+            subject_id:
+              cbt_config
+                ?.other_subject_ids?.[0],
+          },
+          {
+            key: 'subject_2',
+            label: 'Subject 2',
+            start: 100,
+            count: 40,
+            subject_id:
+              cbt_config
+                ?.other_subject_ids?.[1],
+          },
+          {
+            key: 'subject_3',
+            label: 'Subject 3',
+            start: 140,
+            count: 40,
+            subject_id:
+              cbt_config
+                ?.other_subject_ids?.[2],
+          },
+        ]
+      : [];
 
   return NextResponse.json({
-    attempt_id: attempt.id,
+    attempt_id:
+      attempt.id,
 
     started_at:
       attempt.started_at,
@@ -676,17 +946,59 @@ export async function POST(request: Request) {
     duration_seconds:
       attempt.duration_seconds,
 
+    /*
+     * For UTME Challenge this is
+     * the REMAINING time.
+     */
+    challenge:
+      mode ===
+      'utme_challenge'
+        ? {
+            round_id:
+              challengeRound
+                ?.id,
+
+            activated_at:
+              challengeRound
+                ?.activated_at,
+
+            total_duration_seconds:
+              challengeRound
+                ?.duration_seconds ??
+              120 * 60,
+
+            remaining_seconds:
+              challengeRemainingSeconds,
+
+            global_deadline:
+              new Date(
+                new Date(
+                  challengeRound!
+                    .activated_at!
+                ).getTime() +
+                  (challengeRound!
+                    .duration_seconds ??
+                    120 * 60) *
+                    1000
+              ).toISOString(),
+          }
+        : null,
+
     questions:
       orderedQuestions,
 
-    cbt: isSpecialCbt
-      ? {
-          total_questions: 180,
+    cbt:
+      isSpecialCbt
+        ? {
+            total_questions:
+              180,
 
-          duration_minutes: 120,
+            duration_minutes:
+              120,
 
-          sections: cbtSections,
-        }
-      : null,
+            sections:
+              cbtSections,
+          }
+        : null,
   });
 }
