@@ -11,6 +11,11 @@ const createSchema = z.object({
   is_active: z.boolean().default(false),
 });
 
+const updateSchema = z.object({
+  round_id: z.string().uuid(),
+  is_active: z.boolean(),
+});
+
 export async function GET() {
   const caller = await getCurrentProfile();
 
@@ -38,10 +43,10 @@ export async function GET() {
       opens_at,
       closes_at,
       is_active,
-      started_at,
+      activated_at,
+      results_released,
       created_by,
-      created_at,
-      results_released
+      created_at
     `)
     .order('created_at', {
       ascending: false,
@@ -108,12 +113,6 @@ export async function POST(
     is_active,
   } = parsed.data;
 
-  /*
-   * =====================================================
-   * VALIDATE OPEN/CLOSE DATES
-   * =====================================================
-   */
-
   if (opens_at && closes_at) {
     const openDate =
       new Date(opens_at);
@@ -153,35 +152,13 @@ export async function POST(
     createAdminClient();
 
   /*
-   * =====================================================
-   * GLOBAL CHALLENGE START TIME
-   * =====================================================
-   *
-   * If the admin activates the round while creating it,
-   * the global timer starts NOW.
-   *
-   * Every student will use this exact timestamp.
-   *
-   * Example:
-   *
-   * started_at = 10:00
-   * duration   = 7200 seconds
-   *
-   * Student starts 10:30:
-   *
-   * 7200 - 1800 = 5400 seconds
-   * = 90 minutes remaining
+   * If the admin creates the round
+   * as active, the challenge clock
+   * starts immediately.
    */
-
-  const startedAt = is_active
+  const activatedAt = is_active
     ? new Date().toISOString()
     : null;
-
-  /*
-   * =====================================================
-   * CREATE ROUND
-   * =====================================================
-   */
 
   const { data, error } =
     await admin
@@ -189,16 +166,15 @@ export async function POST(
       .insert({
         title,
         difficulty,
-
         opens_at:
           opens_at || null,
-
         closes_at:
           closes_at || null,
 
         is_active,
 
-        started_at: startedAt,
+        activated_at:
+          activatedAt,
 
         created_by:
           caller.id,
@@ -212,9 +188,8 @@ export async function POST(
         duration_seconds:
           120 * 60,
 
-        // Results stay hidden
-        // until admin releases them.
-        results_released: false,
+        results_released:
+          false,
       })
       .select()
       .single();
@@ -238,4 +213,188 @@ export async function POST(
     data,
     { status: 201 }
   );
+}
+
+/*
+ * =====================================================
+ * ACTIVATE / DEACTIVATE CHALLENGE
+ * =====================================================
+ *
+ * When the admin activates a round:
+ *
+ * activated_at = NOW()
+ *
+ * This starts the GLOBAL 120-minute challenge clock.
+ *
+ * Example:
+ *
+ * Admin activates at 10:00
+ *
+ * Student starts at 10:00
+ * -> 120 minutes
+ *
+ * Student starts at 10:30
+ * -> 90 minutes
+ *
+ * Student starts at 11:00
+ * -> 60 minutes
+ */
+export async function PATCH(
+  request: Request
+) {
+  const caller =
+    await getCurrentProfile();
+
+  if (
+    !caller ||
+    (caller.role !== 'admin' &&
+      caller.role !== 'super_admin')
+  ) {
+    return NextResponse.json(
+      { error: 'Not authorized.' },
+      { status: 403 }
+    );
+  }
+
+  const body = await request
+    .json()
+    .catch(() => null);
+
+  const parsed =
+    updateSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error:
+          'Invalid challenge activation request.',
+      },
+      { status: 400 }
+    );
+  }
+
+  const {
+    round_id,
+    is_active,
+  } = parsed.data;
+
+  const admin =
+    createAdminClient();
+
+  /*
+   * Activating a round for the
+   * first time starts the clock.
+   */
+  if (is_active) {
+    const { data: round, error } =
+      await admin
+        .from('challenge_rounds')
+        .select(`
+          id,
+          is_active,
+          activated_at
+        `)
+        .eq('id', round_id)
+        .single();
+
+    if (error || !round) {
+      return NextResponse.json(
+        {
+          error:
+            'Challenge round not found.',
+        },
+        { status: 404 }
+      );
+    }
+
+    /*
+     * Do not reset the clock if the
+     * round is already active.
+     */
+    if (round.is_active) {
+      return NextResponse.json({
+        success: true,
+        is_active: true,
+        activated_at:
+          round.activated_at,
+      });
+    }
+
+    const {
+      data,
+      error: updateError,
+    } = await admin
+      .from('challenge_rounds')
+      .update({
+        is_active: true,
+
+        activated_at:
+          new Date().toISOString(),
+      })
+      .eq('id', round_id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error(
+        'Challenge activation error:',
+        updateError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            'Could not activate challenge.',
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      is_active:
+        data.is_active,
+      activated_at:
+        data.activated_at,
+    });
+  }
+
+  /*
+   * Deactivating the round does NOT
+   * erase activated_at.
+   */
+  const {
+    data,
+    error,
+  } = await admin
+    .from('challenge_rounds')
+    .update({
+      is_active: false,
+    })
+    .eq('id', round_id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error(
+      'Challenge deactivation error:',
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          'Could not deactivate challenge.',
+      },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    is_active:
+      data.is_active,
+    activated_at:
+      data.activated_at,
+  });
 }
