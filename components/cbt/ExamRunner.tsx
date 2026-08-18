@@ -1,6 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { useExamTimer } from '@/lib/hooks/useExamTimer';
 import { Calculator } from '@/components/calculator/Calculator';
@@ -94,29 +98,63 @@ export function ExamRunner({
     useState<CbtSectionKey>('english');
 
   /*
-   * ----------------------------------------------------
-   * CBT QUESTIONS
-   * ----------------------------------------------------
+   * =====================================================
+   * BUILD CBT SECTIONS
+   * =====================================================
    *
-   * UTME Challenge also uses mode = "cbt".
+   * IMPORTANT:
    *
-   * The challenge is differentiated by round_id
-   * in the exam attempt configuration, not by a
-   * separate mode.
+   * Normal JAMB CBT and UTME Challenge both use:
+   *
+   *     mode = "cbt"
+   *
+   * A UTME Challenge is identified separately by the
+   * attempt's round_id.
+   *
+   * Therefore we DO NOT create a new mode such as:
+   *
+   *     mode = "utme_challenge"
+   *
+   * The same CBT runner handles both.
+   *
+   * Expected CBT structure:
+   *
+   * English     = 60
+   * Biology     = 40
+   * Chemistry   = 40
+   * Physics     = 40
+   *
+   * Total       = 180
    */
 
   const cbtQuestions = useMemo(() => {
-    if (mode !== 'cbt') return null;
+    if (mode !== 'cbt') {
+      return null;
+    }
 
     const typedQuestions =
       questions as QuestionWithSubject[];
 
+    /*
+     * If there are no questions at all, return empty
+     * sections instead of crashing.
+     */
+
+    if (typedQuestions.length === 0) {
+      return {
+        english: [],
+        biology: [],
+        chemistry: [],
+        physics: [],
+      };
+    }
+
     const getSubjectName = (
-      q: QuestionWithSubject
+      question: QuestionWithSubject
     ) => {
       return (
-        q.subject_name ??
-        q.subject ??
+        question.subject_name ??
+        question.subject ??
         ''
       )
         .toString()
@@ -125,86 +163,99 @@ export function ExamRunner({
     };
 
     /*
-     * English section:
-     *
-     * 50 English
-     * 10 Lekki Headmaster
-     *
-     * Total = 60
+     * -----------------------------------------------------
+     * TRY SUBJECT-BASED GROUPING FIRST
+     * -----------------------------------------------------
      */
 
     const english =
       typedQuestions.filter(
-        (q) =>
-          q.subject_id ===
+        (question) =>
+          question.subject_id ===
             ENGLISH_SUBJECT_ID ||
-          q.subject_id ===
-            LEKKI_HEADMASTER_SUBJECT_ID
+          question.subject_id ===
+            LEKKI_HEADMASTER_SUBJECT_ID ||
+          getSubjectName(question).includes(
+            'english'
+          ) ||
+          getSubjectName(question).includes(
+            'lekki headmaster'
+          )
       );
 
     const biology =
-      typedQuestions.filter((q) => {
+      typedQuestions.filter((question) => {
         const name =
-          getSubjectName(q);
+          getSubjectName(question);
 
         return (
           name.includes('biology') &&
-          q.subject_id !==
+          question.subject_id !==
             ENGLISH_SUBJECT_ID &&
-          q.subject_id !==
+          question.subject_id !==
             LEKKI_HEADMASTER_SUBJECT_ID
         );
       });
 
     const chemistry =
-      typedQuestions.filter((q) => {
+      typedQuestions.filter((question) => {
         const name =
-          getSubjectName(q);
+          getSubjectName(question);
 
         return (
           name.includes('chemistry') &&
-          q.subject_id !==
+          question.subject_id !==
             ENGLISH_SUBJECT_ID &&
-          q.subject_id !==
+          question.subject_id !==
             LEKKI_HEADMASTER_SUBJECT_ID
         );
       });
 
     const physics =
-      typedQuestions.filter((q) => {
+      typedQuestions.filter((question) => {
         const name =
-          getSubjectName(q);
+          getSubjectName(question);
 
         return (
           name.includes('physics') &&
-          q.subject_id !==
+          question.subject_id !==
             ENGLISH_SUBJECT_ID &&
-          q.subject_id !==
+          question.subject_id !==
             LEKKI_HEADMASTER_SUBJECT_ID
         );
       });
 
     /*
-     * If subject names are available,
+     * If all four sections were found correctly,
      * use them.
+     *
+     * We require the expected minimum counts so that
+     * an incomplete subject grouping does not create
+     * the "No questions loaded for this section"
+     * problem.
      */
 
     if (
-      english.length > 0 &&
-      biology.length > 0 &&
-      chemistry.length > 0 &&
-      physics.length > 0
+      english.length >= 60 &&
+      biology.length >= 40 &&
+      chemistry.length >= 40 &&
+      physics.length >= 40
     ) {
       return {
-        english,
-        biology,
-        chemistry,
-        physics,
+        english: english.slice(0, 60),
+        biology: biology.slice(0, 40),
+        chemistry: chemistry.slice(0, 40),
+        physics: physics.slice(0, 40),
       };
     }
 
     /*
-     * Fallback grouping by subject ID.
+     * -----------------------------------------------------
+     * FALLBACK 1 — GROUP BY SUBJECT ID
+     * -----------------------------------------------------
+     *
+     * Some API responses may contain subject_id but
+     * not subject_name.
      */
 
     const groups = new Map<
@@ -213,20 +264,12 @@ export function ExamRunner({
     >();
 
     for (const question of typedQuestions) {
-      if (
-        !question.subject_id ||
-        question.subject_id ===
-          ENGLISH_SUBJECT_ID ||
-        question.subject_id ===
-          LEKKI_HEADMASTER_SUBJECT_ID
-      ) {
+      if (!question.subject_id) {
         continue;
       }
 
       const existing =
-        groups.get(
-          question.subject_id
-        ) ?? [];
+        groups.get(question.subject_id) ?? [];
 
       existing.push(question);
 
@@ -236,39 +279,121 @@ export function ExamRunner({
       );
     }
 
-    const remainingSubjects =
+    const subjectGroups =
       Array.from(groups.values());
 
+    /*
+     * Find groups large enough to represent the
+     * expected sections.
+     */
+
+    const possibleEnglish =
+      subjectGroups.find(
+        (group) => group.length >= 60
+      );
+
+    const otherGroups =
+      subjectGroups.filter(
+        (group) => group !== possibleEnglish
+      );
+
+    const possibleBiology =
+      otherGroups.find(
+        (group) => group.length >= 40
+      );
+
+    const remainingAfterBiology =
+      otherGroups.filter(
+        (group) => group !== possibleBiology
+      );
+
+    const possibleChemistry =
+      remainingAfterBiology.find(
+        (group) => group.length >= 40
+      );
+
+    const possiblePhysics =
+      remainingAfterBiology.find(
+        (group) =>
+          group !== possibleChemistry &&
+          group.length >= 40
+      );
+
+    if (
+      possibleEnglish &&
+      possibleBiology &&
+      possibleChemistry &&
+      possiblePhysics
+    ) {
+      return {
+        english:
+          possibleEnglish.slice(0, 60),
+
+        biology:
+          possibleBiology.slice(0, 40),
+
+        chemistry:
+          possibleChemistry.slice(0, 40),
+
+        physics:
+          possiblePhysics.slice(0, 40),
+      };
+    }
+
+    /*
+     * -----------------------------------------------------
+     * FALLBACK 2 — EXPECTED CBT ORDER
+     * -----------------------------------------------------
+     *
+     * If the API did not return enough subject metadata,
+     * use the known 180-question CBT structure.
+     *
+     * This prevents the UI from becoming stuck on the
+     * English tab simply because subject metadata was
+     * unavailable.
+     *
+     * Expected order:
+     *
+     * 0   - 59   = English
+     * 60  - 99   = Biology
+     * 100 - 139  = Chemistry
+     * 140 - 179  = Physics
+     */
+
     return {
-      english,
+      english: typedQuestions.slice(0, 60),
 
-      biology:
-        biology.length > 0
-          ? biology
-          : remainingSubjects[0] ?? [],
+      biology: typedQuestions.slice(
+        60,
+        100
+      ),
 
-      chemistry:
-        chemistry.length > 0
-          ? chemistry
-          : remainingSubjects[1] ?? [],
+      chemistry: typedQuestions.slice(
+        100,
+        140
+      ),
 
-      physics:
-        physics.length > 0
-          ? physics
-          : remainingSubjects[2] ?? [],
+      physics: typedQuestions.slice(
+        140,
+        180
+      ),
     };
   }, [questions, mode]);
 
   /*
-   * ----------------------------------------------------
+   * =====================================================
    * CURRENT SECTION
-   * ----------------------------------------------------
+   * =====================================================
    */
 
   const sectionQuestions: QuestionPublic[] =
     mode === 'cbt' && cbtQuestions
       ? cbtQuestions[activeSection]
       : questions;
+
+  /*
+   * Keep the current index safe if the section changes.
+   */
 
   const safeCurrentIndex =
     Math.min(
@@ -284,18 +409,25 @@ export function ExamRunner({
       safeCurrentIndex
     ];
 
+  /*
+   * =====================================================
+   * ANSWER COUNTS
+   * =====================================================
+   */
+
   const answeredCount =
     Object.keys(answers).length;
 
   const answeredInCurrentSection =
     sectionQuestions.filter(
-      (q) => !!answers[q.id]
+      (question) =>
+        !!answers[question.id]
     ).length;
 
   /*
-   * ----------------------------------------------------
+   * =====================================================
    * SUBMIT EXAM
-   * ----------------------------------------------------
+   * =====================================================
    */
 
   const handleSubmit =
@@ -303,12 +435,14 @@ export function ExamRunner({
       async (
         autoSubmitted = false
       ) => {
-        if (submitting) return;
+        if (submitting) {
+          return;
+        }
 
         setSubmitting(true);
 
         try {
-          const res =
+          const response =
             await fetch(
               `/api/exams/${attemptId}/submit`,
               {
@@ -325,11 +459,11 @@ export function ExamRunner({
             );
 
           const data =
-            await res
+            await response
               .json()
               .catch(() => null);
 
-          if (!res.ok) {
+          if (!response.ok) {
             throw new Error(
               data?.error ??
                 'Could not submit exam.'
@@ -337,12 +471,18 @@ export function ExamRunner({
           }
 
           /*
-           * The results page is responsible for
-           * deciding whether this is a normal exam
-           * or a UTME Challenge.
+           * IMPORTANT:
            *
-           * UTME Challenge results will be hidden
-           * there until the admin releases them.
+           * We always go to the results route after
+           * submission.
+           *
+           * The results API/page determines whether
+           * this is:
+           *
+           * - normal CBT
+           * - UTME Challenge
+           *
+           * UTME Challenge results are hidden there.
            */
 
           router.push(
@@ -365,21 +505,15 @@ export function ExamRunner({
     );
 
   /*
-   * ----------------------------------------------------
+   * =====================================================
    * TIMER
-   * ----------------------------------------------------
+   * =====================================================
    *
-   * IMPORTANT:
+   * The start-exam system supplies the duration.
    *
-   * For UTME Challenge, durationSeconds supplied
-   * by the start-exam API is the REMAINING GLOBAL
-   * challenge time.
-   *
-   * Therefore we do not create another 120-minute
-   * timer here.
-   *
-   * The timer simply counts down the remaining
-   * seconds supplied to the runner.
+   * For a UTME Challenge this must be the remaining
+   * challenge time, not a newly-created timer for every
+   * subject.
    */
 
   const timer =
@@ -389,9 +523,9 @@ export function ExamRunner({
     );
 
   /*
-   * ----------------------------------------------------
+   * =====================================================
    * SELECT ANSWER
-   * ----------------------------------------------------
+   * =====================================================
    */
 
   async function selectAnswer(
@@ -411,9 +545,9 @@ export function ExamRunner({
 
     /*
      * Practice mode locks the question after
-     * showing feedback.
+     * feedback is displayed.
      *
-     * CBT and UTME Challenge do not show answers
+     * CBT and UTME Challenge never reveal answers
      * while the exam is running.
      */
 
@@ -424,8 +558,8 @@ export function ExamRunner({
       return;
     }
 
-    setAnswers((prev) => ({
-      ...prev,
+    setAnswers((previous) => ({
+      ...previous,
       [currentQuestion.id]:
         letter,
     }));
@@ -433,7 +567,7 @@ export function ExamRunner({
     setAnswerLoading(true);
 
     try {
-      const res =
+      const response =
         await fetch(
           `/api/exams/${attemptId}/answer`,
           {
@@ -452,26 +586,25 @@ export function ExamRunner({
         );
 
       const data =
-        await res.json();
+        await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         throw new Error(
-          data.error ??
+          data?.error ??
             'Could not save answer.'
         );
       }
 
       /*
-       * Only normal practice mode receives
-       * immediate answer feedback.
+       * Only practice mode gets immediate feedback.
        */
 
       if (
         mode === 'practice' &&
         data.correct_answer
       ) {
-        setFeedback((prev) => ({
-          ...prev,
+        setFeedback((previous) => ({
+          ...previous,
           [currentQuestion.id]: {
             is_correct: Boolean(
               data.is_correct
@@ -495,9 +628,9 @@ export function ExamRunner({
   }
 
   /*
-   * ----------------------------------------------------
+   * =====================================================
    * NAVIGATION
-   * ----------------------------------------------------
+   * =====================================================
    */
 
   function goNext() {
@@ -541,26 +674,45 @@ export function ExamRunner({
       : undefined;
 
   /*
-   * ----------------------------------------------------
-   * NO QUESTION
-   * ----------------------------------------------------
+   * =====================================================
+   * NO QUESTIONS
+   * =====================================================
    */
 
   if (!currentQuestion) {
     return (
       <div className="mx-auto max-w-xl p-6">
         <div className="rounded-2xl bg-amber-50 p-6 text-center text-amber-800">
-          No questions loaded for
-          this section.
+          <h2 className="text-lg font-bold">
+            No questions loaded for
+            this section.
+          </h2>
+
+          <p className="mt-2 text-sm">
+            The challenge could not load
+            the questions for this section.
+            Please return to the challenge
+            and try again.
+          </p>
+
+          <button
+            type="button"
+            onClick={() =>
+              router.back()
+            }
+            className="mt-5 rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white"
+          >
+            Go Back
+          </button>
         </div>
       </div>
     );
   }
 
   /*
-   * ----------------------------------------------------
+   * =====================================================
    * EXAM UI
-   * ----------------------------------------------------
+   * =====================================================
    */
 
   return (
@@ -601,6 +753,11 @@ export function ExamRunner({
                   activeSection ===
                   section.key;
 
+                const sectionCount =
+                  cbtQuestions?.[
+                    section.key
+                  ]?.length ?? 0;
+
                 return (
                   <button
                     key={
@@ -619,6 +776,10 @@ export function ExamRunner({
                     }`}
                   >
                     {section.name}
+
+                    <span className="ml-1 text-xs opacity-60">
+                      ({sectionCount})
+                    </span>
                   </button>
                 );
               }
@@ -720,14 +881,14 @@ export function ExamRunner({
                         !!currentFeedback)
                     }
                     className={`flex w-full items-start gap-4 rounded-xl border-2 p-4 text-left transition ${
-                      isCorrectOption
-                        ? 'border-emerald-500 bg-emerald-900/30'
-                        : isWrongSelected
-                          ? 'border-red-500 bg-red-900/30'
-                          : isSelected
-                            ? 'border-emerald-500 bg-emerald-900/20'
-                            : 'border-slate-700 bg-slate-900 hover:border-slate-500'
-                    }`}
+  isCorrectOption
+    ? 'border-emerald-500 bg-emerald-900/30'
+    : isWrongSelected
+      ? 'border-red-500 bg-red-900/30'
+      : isSelected
+        ? 'border-emerald-500 bg-emerald-900/20'
+        : 'border-slate-700 bg-slate-900 hover:border-slate-500'
+}`}
                   >
                     <span
                       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold ${
@@ -750,8 +911,7 @@ export function ExamRunner({
 
           {/* PRACTICE FEEDBACK */}
 
-          {mode ===
-            'practice' &&
+          {mode === 'practice' &&
             currentFeedback && (
               <div
                 className={`mt-6 rounded-xl p-4 ${
@@ -773,9 +933,7 @@ export function ExamRunner({
                     </p>
 
                     <p className="mt-1">
-                      {
-                        currentFeedback.explanation
-                      }
+                      {currentFeedback.explanation}
                     </p>
                   </div>
                 )}
@@ -795,12 +953,9 @@ export function ExamRunner({
 
           <button
             type="button"
-            onClick={
-              goPrevious
-            }
+            onClick={goPrevious}
             disabled={
-              safeCurrentIndex ===
-                0 ||
+              safeCurrentIndex === 0 ||
               submitting
             }
             className="rounded-full border-2 border-slate-600 px-5 py-3 font-semibold text-slate-300 disabled:opacity-30"
@@ -809,13 +964,8 @@ export function ExamRunner({
           </button>
 
           <div className="text-center text-sm text-slate-400">
-            {
-              answeredInCurrentSection
-            }
-            /
-            {
-              sectionQuestions.length
-            }
+            {answeredInCurrentSection}/
+            {sectionQuestions.length}
           </div>
 
           <button
@@ -823,8 +973,7 @@ export function ExamRunner({
             onClick={goNext}
             disabled={
               safeCurrentIndex ===
-                sectionQuestions.length -
-                  1 ||
+                sectionQuestions.length - 1 ||
               submitting
             }
             className="rounded-full bg-emerald-600 px-7 py-3 font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-30"
@@ -839,13 +988,9 @@ export function ExamRunner({
           <button
             type="button"
             onClick={() =>
-              setShowConfirm(
-                true
-              )
+              setShowConfirm(true)
             }
-            disabled={
-              submitting
-            }
+            disabled={submitting}
             className="w-full rounded-xl bg-orange-500 px-6 py-4 text-base font-bold text-white shadow-lg transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             ✓ Submit Exam
@@ -855,8 +1000,7 @@ export function ExamRunner({
         {/* OVERALL PROGRESS */}
 
         <div className="mt-4 pb-6 text-center text-xs text-slate-500">
-          {answeredCount} of{' '}
-          {questions.length}{' '}
+          {answeredCount} of {questions.length}{' '}
           answered
         </div>
       </div>
@@ -867,9 +1011,7 @@ export function ExamRunner({
         <div className="fixed bottom-5 right-4 z-[110]">
           <Calculator
             onClose={() =>
-              setShowCalculator(
-                false
-              )
+              setShowCalculator(false)
             }
           />
         </div>
@@ -895,9 +1037,8 @@ export function ExamRunner({
             {answeredCount <
               questions.length && (
               <p className="mt-2 text-sm font-medium text-amber-700">
-                Unanswered questions
-                will be marked
-                incorrect.
+                Unanswered questions will
+                be marked incorrect.
               </p>
             )}
 
@@ -907,13 +1048,9 @@ export function ExamRunner({
                 variant="secondary"
                 fullWidth
                 onClick={() =>
-                  setShowConfirm(
-                    false
-                  )
+                  setShowConfirm(false)
                 }
-                disabled={
-                  submitting
-                }
+                disabled={submitting}
               >
                 Continue
               </Button>
@@ -921,13 +1058,9 @@ export function ExamRunner({
               <Button
                 variant="danger"
                 fullWidth
-                loading={
-                  submitting
-                }
+                loading={submitting}
                 onClick={() =>
-                  handleSubmit(
-                    false
-                  )
+                  handleSubmit(false)
                 }
               >
                 Submit
