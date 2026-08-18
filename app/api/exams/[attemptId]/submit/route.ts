@@ -9,10 +9,10 @@ import { scoreAttempt } from '@/lib/scoring/scoreAttempt';
 //   - return the normal percentage result.
 //
 // UTME Challenge:
-//   - save the challenge score out of 400
+//   - calculate and save the score out of 400
 //   - update the challenge participant
-//   - DO NOT reveal the score to the student yet
-//   - the score becomes visible only after admin releases results.
+//   - DO NOT reveal the score to the student
+//   - results become visible only after admin releases them.
 
 export async function POST(
   request: Request,
@@ -31,8 +31,7 @@ export async function POST(
 
   const body = await request.json().catch(() => ({}));
 
-  const autoSubmitted =
-    body?.auto_submitted === true;
+  const autoSubmitted = body?.auto_submitted === true;
 
   const admin = createAdminClient();
 
@@ -67,6 +66,9 @@ export async function POST(
     );
   }
 
+  const isChallenge =
+    attempt.mode === 'utme_challenge';
+
   /*
    * =====================================================
    * ALREADY SUBMITTED
@@ -81,18 +83,23 @@ export async function POST(
       .single();
 
     /*
-     * For a UTME Challenge, NEVER return the result
-     * directly to the student after submission.
+     * NEVER expose challenge results.
      */
 
-    if (attempt.mode === 'utme_challenge') {
+    if (isChallenge) {
       return NextResponse.json({
+        success: true,
         already_submitted: true,
         challenge: true,
+        results_hidden: true,
         message:
-          'Your results have been saved. They will be available when the administrator releases the results.',
+          'Your challenge has been submitted successfully. Results are coming soon.',
       });
     }
+
+    /*
+     * Normal exams keep their existing behavior.
+     */
 
     return NextResponse.json({
       already_submitted: true,
@@ -104,9 +111,6 @@ export async function POST(
    * =====================================================
    * SCORE ATTEMPT
    * =====================================================
-   *
-   * scoreAttempt continues to calculate the normal
-   * percentage score.
    */
 
   let result;
@@ -139,9 +143,10 @@ export async function POST(
   const timeUsedSeconds = Math.max(
     0,
     Math.round(
-      (Date.now() -
-        new Date(attempt.started_at).getTime()) /
-        1000
+      (
+        Date.now() -
+        new Date(attempt.started_at).getTime()
+      ) / 1000
     )
   );
 
@@ -150,46 +155,29 @@ export async function POST(
 
   /*
    * =====================================================
-   * DETERMINE CHALLENGE
-   * =====================================================
-   */
-
-  const isChallenge =
-    attempt.mode === 'utme_challenge';
-
-  /*
-   * =====================================================
    * CHALLENGE SCORE
    * =====================================================
    *
-   * The challenge contains 180 questions and uses a
-   * 400-point scale.
+   * UTME Challenge:
    *
-   * Example:
+   * 180 questions = 400 marks
    *
-   * 180 correct = 400/400
-   * 135 correct = 300/400
-   * 90 correct  = 200/400
-   * 45 correct  = 100/400
-   *
-   * We round to two decimal places.
+   * 180 correct = 400
+   * 135 correct = 300
+   * 90 correct  = 200
+   * 45 correct  = 100
    */
 
   const challengeScore = isChallenge
     ? Math.round(
-        ((result.correct_count / 180) * 400) *
-          100
+        ((result.correct_count / 180) * 400) * 100
       ) / 100
     : null;
 
   /*
    * =====================================================
-   * SAVE EXAM ATTEMPT
+   * SAVE SCORE
    * =====================================================
-   *
-   * Normal exams keep their percentage score.
-   *
-   * Challenge attempts store the /400 score.
    */
 
   const savedScore = isChallenge
@@ -227,7 +215,10 @@ export async function POST(
       .select('*')
       .single();
 
-  if (updateError || !updatedAttempt) {
+  if (
+    updateError ||
+    !updatedAttempt
+  ) {
     console.error(
       'Exam finalization error:',
       updateError
@@ -244,14 +235,8 @@ export async function POST(
 
   /*
    * =====================================================
-   * UTME CHALLENGE PARTICIPANT
+   * UTME CHALLENGE
    * =====================================================
-   *
-   * Copy the final result into the challenge
-   * participant record.
-   *
-   * This is what the admin challenge leaderboard
-   * reads.
    */
 
   if (isChallenge) {
@@ -285,22 +270,21 @@ export async function POST(
     }
 
     /*
-     * The participant table in your database does not
-     * contain the old status/count columns we were
-     * previously trying to select.
+     * Save the score to the participant.
      *
-     * We therefore only update columns confirmed to
-     * exist from your database structure.
+     * Rank is calculated by the leaderboard
+     * and is therefore reset here.
      */
 
-    const { error: participantError } =
-      await admin
-        .from('utme_challenge_participants')
-        .update({
-          score: challengeScore,
-          rank: null,
-        })
-        .eq('id', participantId);
+    const {
+      error: participantError,
+    } = await admin
+      .from('utme_challenge_participants')
+      .update({
+        score: challengeScore,
+        rank: null,
+      })
+      .eq('id', participantId);
 
     if (participantError) {
       console.error(
@@ -323,7 +307,9 @@ export async function POST(
      * =================================================
      */
 
-    await admin
+    const {
+      error: leaderboardError,
+    } = await admin
       .from('leaderboard_entries')
       .insert({
         attempt_id: attemptId,
@@ -336,19 +322,46 @@ export async function POST(
           timeUsedSeconds,
       });
 
+    if (leaderboardError) {
+      console.error(
+        'Challenge leaderboard entry error:',
+        leaderboardError
+      );
+
+      /*
+       * We do NOT fail the student's submission here.
+       *
+       * The important challenge participant result
+       * has already been saved.
+       */
+    }
+
     /*
      * =================================================
-     * IMPORTANT:
-     * DO NOT RETURN THE SCORE TO THE STUDENT
+     * CRITICAL SECURITY RULE
      * =================================================
+     *
+     * DO NOT RETURN:
+     *
+     * - score
+     * - correct_count
+     * - incorrect_count
+     * - unanswered_count
+     * - rank
+     * - updatedAttempt
+     * - result
+     *
+     * to the student.
      */
 
     return NextResponse.json({
       success: true,
       challenge: true,
       submitted: true,
+      results_hidden: true,
+
       message:
-        'Your results have been saved. They will be available when the administrator releases the results.',
+        'Your challenge has been submitted successfully. Results are coming soon.',
     });
   }
 
@@ -356,11 +369,11 @@ export async function POST(
    * =====================================================
    * NORMAL EXAMS
    * =====================================================
-   *
-   * Normal exams continue behaving exactly as before.
    */
 
-  await admin
+  const {
+    error: leaderboardError,
+  } = await admin
     .from('leaderboard_entries')
     .insert({
       attempt_id: attemptId,
@@ -375,6 +388,17 @@ export async function POST(
       time_used_seconds:
         timeUsedSeconds,
     });
+
+  if (leaderboardError) {
+    console.error(
+      'Leaderboard entry error:',
+      leaderboardError
+    );
+  }
+
+  /*
+   * Normal exams still receive their results.
+   */
 
   return NextResponse.json({
     attempt: updatedAttempt,
