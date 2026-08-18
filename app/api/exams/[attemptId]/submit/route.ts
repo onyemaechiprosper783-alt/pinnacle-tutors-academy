@@ -5,14 +5,16 @@ import { scoreAttempt } from '@/lib/scoring/scoreAttempt';
 
 // POST /api/exams/[attemptId]/submit
 //
-// Normal exams:
-//   - return the normal percentage result.
+// Normal CBT:
+//   - calculate and return the normal result.
 //
 // UTME Challenge:
-//   - calculate and save the score out of 400
-//   - update the challenge participant
-//   - DO NOT reveal the score to the student
-//   - results become visible only after admin releases them.
+//   - uses mode: 'cbt'
+//   - identified by round_id in the attempt config
+//   - 180 questions = 400 marks
+//   - save score to challenge participant
+//   - create leaderboard entry
+//   - DO NOT reveal score to student
 
 export async function POST(
   request: Request,
@@ -31,7 +33,8 @@ export async function POST(
 
   const body = await request.json().catch(() => ({}));
 
-  const autoSubmitted = body?.auto_submitted === true;
+  const autoSubmitted =
+    body?.auto_submitted === true;
 
   const admin = createAdminClient();
 
@@ -41,19 +44,21 @@ export async function POST(
    * =====================================================
    */
 
-  const { data: attempt, error: attemptError } =
-    await admin
-      .from('exam_attempts')
-      .select(`
-        id,
-        student_id,
-        status,
-        started_at,
-        mode,
-        config
-      `)
-      .eq('id', attemptId)
-      .single();
+  const {
+    data: attempt,
+    error: attemptError,
+  } = await admin
+    .from('exam_attempts')
+    .select(`
+      id,
+      student_id,
+      status,
+      started_at,
+      mode,
+      config
+    `)
+    .eq('id', attemptId)
+    .single();
 
   if (
     attemptError ||
@@ -61,13 +66,52 @@ export async function POST(
     attempt.student_id !== caller.id
   ) {
     return NextResponse.json(
-      { error: 'Attempt not found.' },
+      {
+        error: 'Attempt not found.',
+      },
       { status: 404 }
     );
   }
 
+  /*
+   * =====================================================
+   * DETERMINE WHETHER THIS IS A UTME CHALLENGE
+   * =====================================================
+   *
+   * IMPORTANT:
+   *
+   * The UTME Challenge uses:
+   *
+   *     mode: 'cbt'
+   *
+   * It is NOT:
+   *
+   *     mode: 'utme_challenge'
+   *
+   * We identify the challenge using round_id
+   * stored in the attempt configuration.
+   */
+
+  const config =
+    (attempt.config ?? {}) as {
+      round_id?: string | null;
+      challenge?: {
+        round_id?: string | null;
+        participant_id?: string | null;
+      } | null;
+      cbt?: {
+        total_questions?: number;
+      } | null;
+    };
+
+  const roundId =
+    config.round_id ??
+    config.challenge?.round_id ??
+    null;
+
   const isChallenge =
-    attempt.mode === 'utme_challenge';
+    attempt.mode === 'cbt' &&
+    !!roundId;
 
   /*
    * =====================================================
@@ -76,14 +120,8 @@ export async function POST(
    */
 
   if (attempt.status !== 'in_progress') {
-    const { data: existing } = await admin
-      .from('exam_attempts')
-      .select('*')
-      .eq('id', attemptId)
-      .single();
-
     /*
-     * NEVER expose challenge results.
+     * Challenge results must NEVER be returned.
      */
 
     if (isChallenge) {
@@ -98,8 +136,15 @@ export async function POST(
     }
 
     /*
-     * Normal exams keep their existing behavior.
+     * Normal CBT/exams keep their normal behavior.
      */
+
+    const { data: existing } =
+      await admin
+        .from('exam_attempts')
+        .select('*')
+        .eq('id', attemptId)
+        .single();
 
     return NextResponse.json({
       already_submitted: true,
@@ -116,7 +161,9 @@ export async function POST(
   let result;
 
   try {
-    result = await scoreAttempt(attemptId);
+    result = await scoreAttempt(
+      attemptId
+    );
   } catch (error) {
     console.error(
       'Exam scoring error:',
@@ -140,15 +187,18 @@ export async function POST(
    * =====================================================
    */
 
-  const timeUsedSeconds = Math.max(
-    0,
-    Math.round(
-      (
-        Date.now() -
-        new Date(attempt.started_at).getTime()
-      ) / 1000
-    )
-  );
+  const timeUsedSeconds =
+    Math.max(
+      0,
+      Math.round(
+        (
+          Date.now() -
+          new Date(
+            attempt.started_at
+          ).getTime()
+        ) / 1000
+      )
+    );
 
   const submittedAt =
     new Date().toISOString();
@@ -162,17 +212,21 @@ export async function POST(
    *
    * 180 questions = 400 marks
    *
-   * 180 correct = 400
-   * 135 correct = 300
-   * 90 correct  = 200
-   * 45 correct  = 100
+   * Formula:
+   *
+   * correct / 180 × 400
    */
 
-  const challengeScore = isChallenge
-    ? Math.round(
-        ((result.correct_count / 180) * 400) * 100
-      ) / 100
-    : null;
+  const challengeScore =
+    isChallenge
+      ? Math.round(
+          (
+            (result.correct_count /
+              180) *
+            400
+          ) * 100
+        ) / 100
+      : null;
 
   /*
    * =====================================================
@@ -180,40 +234,44 @@ export async function POST(
    * =====================================================
    */
 
-  const savedScore = isChallenge
-    ? challengeScore!
-    : result.score;
+  const savedScore =
+    isChallenge
+      ? challengeScore!
+      : result.score;
 
-  const { data: updatedAttempt, error: updateError } =
-    await admin
-      .from('exam_attempts')
-      .update({
-        status: autoSubmitted
-          ? 'auto_submitted'
-          : 'submitted',
+  const {
+    data: updatedAttempt,
+    error: updateError,
+  } = await admin
+    .from('exam_attempts')
+    .update({
+      status: autoSubmitted
+        ? 'auto_submitted'
+        : 'submitted',
 
-        submitted_at: submittedAt,
+      submitted_at:
+        submittedAt,
 
-        time_used_seconds:
-          timeUsedSeconds,
+      time_used_seconds:
+        timeUsedSeconds,
 
-        total_questions:
-          result.total_questions,
+      total_questions:
+        result.total_questions,
 
-        correct_count:
-          result.correct_count,
+      correct_count:
+        result.correct_count,
 
-        incorrect_count:
-          result.incorrect_count,
+      incorrect_count:
+        result.incorrect_count,
 
-        unanswered_count:
-          result.unanswered_count,
+      unanswered_count:
+        result.unanswered_count,
 
-        score: savedScore,
-      })
-      .eq('id', attemptId)
-      .select('*')
-      .single();
+      score: savedScore,
+    })
+    .eq('id', attemptId)
+    .select('*')
+    .single();
 
   if (
     updateError ||
@@ -240,24 +298,64 @@ export async function POST(
    */
 
   if (isChallenge) {
-    const challengeConfig =
-      (attempt.config ?? {}) as {
-        round_id?: string;
-        challenge?: {
-          participant_id?: string;
-        };
-      };
+    /*
+     * =================================================
+     * FIND CHALLENGE PARTICIPANT
+     * =================================================
+     *
+     * We identify the participant using:
+     *
+     *   round_id
+     *   student_id
+     *
+     * This means we do not depend on participant_id
+     * being stored inside the attempt config.
+     */
 
-    const participantId =
-      challengeConfig.challenge
-        ?.participant_id;
+    const {
+      data: participant,
+      error:
+        participantLookupError,
+    } = await admin
+      .from(
+        'utme_challenge_participants'
+      )
+      .select('id')
+      .eq(
+        'round_id',
+        roundId
+      )
+      .eq(
+        'student_id',
+        caller.id
+      )
+      .maybeSingle();
 
-    const roundId =
-      challengeConfig.round_id;
-
-    if (!participantId) {
+    if (
+      participantLookupError
+    ) {
       console.error(
-        'Challenge participant ID missing from attempt config.'
+        'Challenge participant lookup error:',
+        participantLookupError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            'Challenge participant could not be identified.',
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!participant) {
+      console.error(
+        'No challenge participant found.',
+        {
+          roundId,
+          studentId:
+            caller.id,
+        }
       );
 
       return NextResponse.json(
@@ -270,23 +368,31 @@ export async function POST(
     }
 
     /*
-     * Save the score to the participant.
-     *
-     * Rank is calculated by the leaderboard
-     * and is therefore reset here.
+     * =================================================
+     * SAVE CHALLENGE PARTICIPANT SCORE
+     * =================================================
      */
 
     const {
-      error: participantError,
+      error:
+        participantError,
     } = await admin
-      .from('utme_challenge_participants')
+      .from(
+        'utme_challenge_participants'
+      )
       .update({
-        score: challengeScore,
+        score:
+          challengeScore,
         rank: null,
       })
-      .eq('id', participantId);
+      .eq(
+        'id',
+        participant.id
+      );
 
-    if (participantError) {
+    if (
+      participantError
+    ) {
       console.error(
         'Challenge participant update error:',
         participantError
@@ -308,40 +414,49 @@ export async function POST(
      */
 
     const {
-      error: leaderboardError,
+      error:
+        leaderboardError,
     } = await admin
-      .from('leaderboard_entries')
+      .from(
+        'leaderboard_entries'
+      )
       .insert({
-        attempt_id: attemptId,
-        student_id: caller.id,
+        attempt_id:
+          attemptId,
+
+        student_id:
+          caller.id,
+
         category:
-          roundId ??
-          'utme_challenge',
-        score: challengeScore,
+          roundId,
+
+        score:
+          challengeScore,
+
         time_used_seconds:
           timeUsedSeconds,
       });
 
-    if (leaderboardError) {
+    if (
+      leaderboardError
+    ) {
       console.error(
         'Challenge leaderboard entry error:',
         leaderboardError
       );
 
       /*
-       * We do NOT fail the student's submission here.
-       *
-       * The important challenge participant result
-       * has already been saved.
+       * Do not fail the student's submission
+       * because the leaderboard entry failed.
        */
     }
 
     /*
      * =================================================
-     * CRITICAL SECURITY RULE
+     * SECURITY
      * =================================================
      *
-     * DO NOT RETURN:
+     * NEVER return:
      *
      * - score
      * - correct_count
@@ -350,14 +465,15 @@ export async function POST(
      * - rank
      * - updatedAttempt
      * - result
-     *
-     * to the student.
      */
 
     return NextResponse.json({
       success: true,
+
       challenge: true,
+
       submitted: true,
+
       results_hidden: true,
 
       message:
@@ -367,29 +483,41 @@ export async function POST(
 
   /*
    * =====================================================
-   * NORMAL EXAMS
+   * NORMAL CBT / NORMAL EXAMS
    * =====================================================
    */
 
   const {
-    error: leaderboardError,
+    error:
+      leaderboardError,
   } = await admin
-    .from('leaderboard_entries')
+    .from(
+      'leaderboard_entries'
+    )
     .insert({
-      attempt_id: attemptId,
-      student_id: caller.id,
+      attempt_id:
+        attemptId,
+
+      student_id:
+        caller.id,
+
       category:
         (updatedAttempt.config as {
           round_id?: string;
         })?.round_id ??
         updatedAttempt.mode ??
         'exam',
-      score: result.score,
+
+      score:
+        result.score,
+
       time_used_seconds:
         timeUsedSeconds,
     });
 
-  if (leaderboardError) {
+  if (
+    leaderboardError
+  ) {
     console.error(
       'Leaderboard entry error:',
       leaderboardError
@@ -397,11 +525,13 @@ export async function POST(
   }
 
   /*
-   * Normal exams still receive their results.
+   * Normal exams receive their results.
    */
 
   return NextResponse.json({
-    attempt: updatedAttempt,
+    attempt:
+      updatedAttempt,
+
     result,
   });
 }
