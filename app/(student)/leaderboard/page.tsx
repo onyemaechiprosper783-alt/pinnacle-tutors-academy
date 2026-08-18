@@ -20,7 +20,9 @@ interface LeaderboardResponse {
 }
 
 export default function LeaderboardPage() {
-  const [data, setData] = useState<LeaderboardResponse | null>(null);
+  const [data, setData] =
+    useState<LeaderboardResponse | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -28,14 +30,14 @@ export default function LeaderboardPage() {
     async function loadLeaderboard() {
       try {
         /*
-         * First find the student's challenge participation.
-         * The participant record tells us which round they joined.
+         * Get the round the student participated in.
          */
         const participantRes = await fetch(
-          '/api/challenge/participant'
+          '/api/challenge/round/participant'
         );
 
-        const participantData = await participantRes.json();
+        const participantData =
+          await participantRes.json();
 
         if (!participantRes.ok) {
           throw new Error(
@@ -51,13 +53,15 @@ export default function LeaderboardPage() {
             leaderboard: [],
             my_result: null,
           });
+
           return;
         }
 
         /*
-         * Now load the protected leaderboard.
+         * Load the protected leaderboard.
          *
-         * The server decides whether results have been released.
+         * The server decides whether results
+         * have been released.
          */
         const leaderboardRes = await fetch(
           `/api/challenge/leaderboard?round_id=${encodeURIComponent(
