@@ -1,8 +1,26 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 export default function AITutorSideButton() {
+  const pathname = usePathname();
+
+  // Nia is a study assistant, not part of the exam UI.
+  // Hide the floating tutor button anywhere a student is actively
+  // working through an exam/practice attempt.
+  const isExamRoute =
+    pathname === '/cbt' ||
+    pathname.startsWith('/cbt/') ||
+    pathname === '/mock' ||
+    pathname.startsWith('/mock/') ||
+    pathname === '/practice' ||
+    pathname.startsWith('/practice/') ||
+    pathname === '/challenge' ||
+    pathname.startsWith('/challenge/');
+
+  if (isExamRoute) return null;
+
   return (
     <Link
       href="/ai-tutor"
