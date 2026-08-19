@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getCurrentProfile } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
+const PUBLIC_QUESTION_FIELDS =
+  'id, subject_id, topic_id, passage_id, question_text, option_a, option_b, option_c, option_d, difficulty, exam_type, year, modes, millionaire_tier, subjects(name)';
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ attemptId: string }> }
@@ -11,11 +14,26 @@ export async function GET(
 
   const { attemptId } = await params;
   const admin = createAdminClient();
-  const { data: attempt, error: attemptError } = await admin.from('exam_attempts').select('*').eq('id', attemptId).single();
-  if (attemptError || !attempt || (attempt.student_id !== caller.id && caller.role === 'student')) return NextResponse.json({ error: 'Attempt not found.' }, { status: 404 });
+  const { data: attempt, error: attemptError } = await admin
+    .from('exam_attempts')
+    .select('*')
+    .eq('id', attemptId)
+    .single();
+
+  if (attemptError || !attempt || (attempt.student_id !== caller.id && caller.role === 'student')) {
+    return NextResponse.json({ error: 'Attempt not found.' }, { status: 404 });
+  }
 
   const isStudent = caller.role === 'student';
-  const config = (attempt.config ?? {}) as { round_id?: string | null; results_released?: boolean; challenge?: { round_id?: string | null; participant_id?: string | null; results_released?: boolean } | null };
+  const config = (attempt.config ?? {}) as {
+    round_id?: string | null;
+    results_released?: boolean;
+    challenge?: {
+      round_id?: string | null;
+      participant_id?: string | null;
+      results_released?: boolean;
+    } | null;
+  };
   const roundId = config.round_id ?? config.challenge?.round_id ?? null;
   const isChallenge = (attempt.mode === 'cbt' || attempt.mode === 'utme_challenge') && !!roundId;
   const isSubmitted = attempt.status !== 'in_progress';
@@ -23,7 +41,12 @@ export async function GET(
   let challengeGlobalDeadline: string | null = null;
 
   if (isChallenge && roundId) {
-    const { data: round } = await admin.from('challenge_rounds').select('results_released, activated_at, closes_at, duration_seconds').eq('id', roundId).maybeSingle();
+    const { data: round } = await admin
+      .from('challenge_rounds')
+      .select('results_released, activated_at, closes_at, duration_seconds')
+      .eq('id', roundId)
+      .maybeSingle();
+
     if (round?.results_released === true) resultsReleased = true;
     if (round?.activated_at) {
       const activatedMs = new Date(round.activated_at).getTime();
@@ -31,42 +54,91 @@ export async function GET(
       const durationDeadline = durationMs > 0 ? activatedMs + durationMs : null;
       const closesMs = round.closes_at ? new Date(round.closes_at).getTime() : null;
       const validClosesMs = closesMs !== null && Number.isFinite(closesMs) ? closesMs : null;
-      const candidates = [durationDeadline, validClosesMs].filter((value): value is number => value !== null && Number.isFinite(value));
-      if (candidates.length > 0) challengeGlobalDeadline = new Date(Math.min(...candidates)).toISOString();
+      const candidates = [durationDeadline, validClosesMs].filter(
+        (value): value is number => value !== null && Number.isFinite(value)
+      );
+      if (candidates.length > 0) {
+        challengeGlobalDeadline = new Date(Math.min(...candidates)).toISOString();
+      }
     }
   }
 
   if (isChallenge && isStudent && isSubmitted && !resultsReleased) {
     return NextResponse.json({
-      attempt: { id: attempt.id, mode: attempt.mode, status: attempt.status, started_at: attempt.started_at, submitted_at: attempt.submitted_at, duration_seconds: attempt.duration_seconds, time_used_seconds: attempt.time_used_seconds },
-      questions: [], subject_breakdown: {}, topic_breakdown: {}, weak_topics: [], challenge: true, results_hidden: true,
+      attempt: {
+        id: attempt.id,
+        mode: attempt.mode,
+        status: attempt.status,
+        started_at: attempt.started_at,
+        submitted_at: attempt.submitted_at,
+        duration_seconds: attempt.duration_seconds,
+        time_used_seconds: attempt.time_used_seconds,
+      },
+      questions: [],
+      subject_breakdown: {},
+      topic_breakdown: {},
+      weak_topics: [],
+      challenge: true,
+      results_hidden: true,
       message: 'Your challenge has been submitted successfully. Results will be available when they are released.',
       challenge_global_deadline: challengeGlobalDeadline,
     });
   }
 
-  const { data: attemptQuestions, error: attemptQuestionsError } = await admin.from('attempt_questions').select('id, question_id, position, selected_answer, is_correct').eq('attempt_id', attemptId).order('position', { ascending: true });
-  if (attemptQuestionsError) return NextResponse.json({ error: 'Could not load exam questions.' }, { status: 500 });
+  const { data: attemptQuestions, error: attemptQuestionsError } = await admin
+    .from('attempt_questions')
+    .select('id, question_id, position, selected_answer, is_correct')
+    .eq('attempt_id', attemptId)
+    .order('position', { ascending: true });
+
+  if (attemptQuestionsError) {
+    return NextResponse.json({ error: 'Could not load exam questions.' }, { status: 500 });
+  }
 
   const questionIds = (attemptQuestions ?? []).map((aq) => aq.question_id);
-  if (questionIds.length === 0) return NextResponse.json({ error: 'No questions were found for this exam attempt.' }, { status: 404 });
+  if (questionIds.length === 0) {
+    return NextResponse.json({ error: 'No questions were found for this exam attempt.' }, { status: 404 });
+  }
 
+  // Active exams only need the public question fields. This reduces the payload
+  // substantially and avoids sending answer keys/explanations to the browser.
   const source = isSubmitted ? 'questions' : 'questions_public';
-  const { data: questions, error: questionsError } = await admin.from(source).select('*, subjects(name)').in('id', questionIds);
+  const selectFields = isSubmitted ? '*, subjects(name)' : PUBLIC_QUESTION_FIELDS;
+  const { data: questions, error: questionsError } = await admin
+    .from(source)
+    .select(selectFields)
+    .in('id', questionIds);
+
   if (questionsError) {
     console.error('Question data load error:', questionsError);
     return NextResponse.json({ error: 'Could not load question data.' }, { status: 500 });
   }
-  if (!questions || questions.length !== questionIds.length) return NextResponse.json({ error: 'Some exam questions could not be loaded.' }, { status: 500 });
+  if (!questions || questions.length !== questionIds.length) {
+    return NextResponse.json({ error: 'Some exam questions could not be loaded.' }, { status: 500 });
+  }
 
-  const topicIds = [...new Set(questions.map((question) => question.topic_id).filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  // Topic names are only needed for submitted-result analytics. Do not make
+  // another database request while a student is actively taking an exam.
   const topicMap = new Map<string, { name: string }>();
-  if (topicIds.length > 0) {
-    const { data: topics, error: topicsError } = await admin.from('topics').select('id, name').in('id', topicIds);
-    if (topicsError) {
-      console.error('Topic data load error:', topicsError);
-    } else {
-      for (const topic of topics ?? []) topicMap.set(topic.id, { name: topic.name });
+  if (isSubmitted) {
+    const topicIds = [
+      ...new Set(
+        questions
+          .map((question) => question.topic_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      ),
+    ];
+
+    if (topicIds.length > 0) {
+      const { data: topics, error: topicsError } = await admin
+        .from('topics')
+        .select('id, name')
+        .in('id', topicIds);
+      if (topicsError) {
+        console.error('Topic data load error:', topicsError);
+      } else {
+        for (const topic of topics ?? []) topicMap.set(topic.id, { name: topic.name });
+      }
     }
   }
 
@@ -75,7 +147,9 @@ export async function GET(
     ...aq,
     question: questionMap.get(aq.question_id),
   }));
-  if (combined.some((aq) => !aq.question)) return NextResponse.json({ error: 'One or more exam questions could not be found.' }, { status: 500 });
+  if (combined.some((aq) => !aq.question)) {
+    return NextResponse.json({ error: 'One or more exam questions could not be found.' }, { status: 500 });
+  }
 
   const subjectBreakdown: Record<string, { correct: number; total: number }> = {};
   const topicBreakdown: Record<string, { correct: number; total: number }> = {};
@@ -86,7 +160,9 @@ export async function GET(
       subjectBreakdown[subjectName].total += 1;
       if (aq.is_correct === true) subjectBreakdown[subjectName].correct += 1;
 
-      const topicName = aq.question?.topic_id ? topicMap.get(aq.question.topic_id)?.name ?? 'Unassigned topic' : 'Unassigned topic';
+      const topicName = aq.question?.topic_id
+        ? topicMap.get(aq.question.topic_id)?.name ?? 'Unassigned topic'
+        : 'Unassigned topic';
       topicBreakdown[topicName] ??= { correct: 0, total: 0 };
       topicBreakdown[topicName].total += 1;
       if (aq.is_correct === true) topicBreakdown[topicName].correct += 1;
@@ -95,8 +171,22 @@ export async function GET(
 
   const weakTopics = Object.entries(topicBreakdown)
     .filter(([, section]) => section.total > 0 && section.correct / section.total < 0.6)
-    .sort((a, b) => (a[1].correct / a[1].total) - (b[1].correct / b[1].total))
-    .map(([topic, section]) => ({ topic, ...section, percentage: Math.round((section.correct / section.total) * 100) }));
+    .sort((a, b) => a[1].correct / a[1].total - b[1].correct / b[1].total)
+    .map(([topic, section]) => ({
+      topic,
+      ...section,
+      percentage: Math.round((section.correct / section.total) * 100),
+    }));
 
-  return NextResponse.json({ attempt, questions: combined, subject_breakdown: subjectBreakdown, topic_breakdown: topicBreakdown, weak_topics: weakTopics, challenge: isChallenge, results_hidden: isChallenge && isStudent && isSubmitted && !resultsReleased, challenge_config: isChallenge ? config.challenge ?? null : null, challenge_global_deadline: challengeGlobalDeadline });
+  return NextResponse.json({
+    attempt,
+    questions: combined,
+    subject_breakdown: subjectBreakdown,
+    topic_breakdown: topicBreakdown,
+    weak_topics: weakTopics,
+    challenge: isChallenge,
+    results_hidden: isChallenge && isStudent && isSubmitted && !resultsReleased,
+    challenge_config: isChallenge ? config.challenge ?? null : null,
+    challenge_global_deadline: challengeGlobalDeadline,
+  });
 }
