@@ -89,6 +89,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
           const isCurrent = i === currentIndex;
           return (
             <button
+              type="button"
               key={q.id}
               onClick={() => setCurrentIndex(i)}
               className={`h-8 w-8 shrink-0 rounded-md text-xs font-semibold ${
@@ -119,6 +120,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
             return (
               <button
+                type="button"
                 key={letter}
                 onClick={() => !currentFeedback && selectAnswer(letter)}
                 disabled={mode === 'practice' && !!currentFeedback}
@@ -150,16 +152,16 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
       {/* Nav buttons */}
       <div className="mt-4 flex items-center justify-between gap-3">
-        <Button variant="secondary" disabled={currentIndex === 0} onClick={() => setCurrentIndex((i) => i - 1)}>
+        <Button type="button" variant="secondary" disabled={currentIndex === 0} onClick={() => setCurrentIndex((i) => i - 1)}>
           Previous
         </Button>
-        <Button variant="ghost" onClick={() => setShowCalculator((s) => !s)}>
+        <Button type="button" variant="ghost" onClick={() => setShowCalculator((s) => !s)}>
           {showCalculator ? 'Hide' : 'Calculator'}
         </Button>
         {currentIndex < questions.length - 1 ? (
-          <Button onClick={() => setCurrentIndex((i) => i + 1)}>Next</Button>
+          <Button type="button" onClick={() => setCurrentIndex((i) => i + 1)}>Next</Button>
         ) : (
-          <Button onClick={() => setShowConfirm(true)}>Submit</Button>
+          <Button type="button" onClick={() => setShowConfirm(true)}>Submit</Button>
         )}
       </div>
 
@@ -172,7 +174,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
       {/* Bottom submit bar (always accessible, not just on last question) */}
       <div className="fixed bottom-0 left-0 right-0 flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 md:static md:mt-4 md:border-0 md:bg-transparent md:px-0 md:py-0">
         <span className="text-sm text-slate-500">{answeredCount} of {questions.length} answered</span>
-        <Button variant="danger" onClick={() => setShowConfirm(true)}>End & Submit</Button>
+        <Button type="button" variant="danger" onClick={() => setShowConfirm(true)}>End & Submit</Button>
       </div>
 
       {showConfirm && (
@@ -185,8 +187,8 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
               {' '}This can&apos;t be undone.
             </p>
             <div className="flex gap-3">
-              <Button variant="secondary" fullWidth onClick={() => setShowConfirm(false)}>Keep working</Button>
-              <Button variant="danger" fullWidth loading={submitting} onClick={() => handleSubmit(false)}>Submit</Button>
+              <Button type="button" variant="secondary" fullWidth onClick={() => setShowConfirm(false)}>Keep working</Button>
+              <Button type="button" variant="danger" fullWidth loading={submitting} onClick={() => handleSubmit(false)}>Submit</Button>
             </div>
           </div>
         </div>
