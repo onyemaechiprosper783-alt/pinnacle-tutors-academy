@@ -8,10 +8,11 @@ import { loginSchema } from '@/lib/validators/auth';
 import { FormField } from '@/components/ui/FormField';
 import { Button } from '@/components/ui/Button';
 
+const supabase = createClient();
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const supabase = createClient();
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -54,7 +55,7 @@ function LoginForm() {
     return () => {
       mounted = false;
     };
-  }, [router, params, supabase]);
+  }, [router, params]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setServerError('');
