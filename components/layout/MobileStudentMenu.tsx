@@ -11,7 +11,6 @@ const MobileMenuContext = createContext<MobileMenuContextValue | null>(null);
 export function MobileMenuProvider({ children }: { children: ReactNode }) { const [open, setOpen] = useState(false); return <MobileMenuContext.Provider value={{ open, setOpen }}>{children}</MobileMenuContext.Provider>; }
 function useMobileMenuContext() { const ctx = useContext(MobileMenuContext); if (!ctx) throw new Error('MobileStudentMenu components must be rendered inside <MobileMenuProvider>.'); return ctx; }
 export function MobileMenuTrigger() { const { setOpen } = useMobileMenuContext(); return <button type="button" onClick={() => setOpen(true)} aria-label="Open student menu" className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--card)] text-xl text-[var(--foreground)] shadow-sm active:scale-95">☰</button>; }
-export function MobileMenuBottomButton() { const { open, setOpen } = useMobileMenuContext(); return <button type="button" onClick={() => setOpen(true)} aria-label="Open student menu" className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 transition ${open ? 'text-orange-600' : 'text-[var(--muted)]'}`}><span className="text-lg">☰</span><span className="truncate text-[10px] font-semibold">Menu</span></button>; }
 
 const MENU_GROUPS = [
   { title: 'Home & Learning', items: [
@@ -26,7 +25,7 @@ const MENU_GROUPS = [
 
 type StudentKey = { access_type: 'product_key' | 'activation_key'; key_code: string; granted_at: string; expires_at: string | null };
 
-export function MobileStudentMenu({ firstName, fullName }: { firstName: string; fullName: string }) {
+export function MobileStudentMenu({ firstName }: { firstName: string; fullName: string }) {
   const { open, setOpen } = useMobileMenuContext(); const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false); const [productKeyOpen, setProductKeyOpen] = useState(false); const [activationKeyOpen, setActivationKeyOpen] = useState(false);
   const [productKey, setProductKey] = useState<StudentKey | null>(null); const [activationKey, setActivationKey] = useState<StudentKey | null>(null); const [loadingKeys, setLoadingKeys] = useState(false); const [keyError, setKeyError] = useState('');
@@ -37,13 +36,32 @@ export function MobileStudentMenu({ firstName, fullName }: { firstName: string; 
   function toggleProductKey() { setProductKeyOpen((value) => !value); setActivationKeyOpen(false); }
   function toggleActivationKey() { setActivationKeyOpen((value) => !value); setProductKeyOpen(false); }
   function formatExpiry(date: string | null) { if (!date) return 'No expiry'; return new Date(date).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' }); }
+  async function shareApp() {
+    const shareData = { title: 'Pinnacle Tutors Academy', text: 'Join me on Pinnacle Tutors Academy for practice, CBT exams and learning.', url: window.location.origin };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+      await navigator.clipboard.writeText(window.location.origin);
+      alert('App link copied. You can paste it anywhere to share.');
+    } catch (error) {
+      if ((error as DOMException)?.name === 'AbortError') return;
+      try { await navigator.clipboard.writeText(window.location.origin); alert('App link copied.'); } catch { alert(window.location.origin); }
+    }
+  }
   if (!mounted || !open) return null;
   return createPortal(<div className="fixed inset-0 z-[99999] md:hidden">
     <button type="button" onClick={closeMenu} aria-label="Close menu" className="absolute inset-0 bg-black/50" />
     <aside className="absolute right-0 top-0 h-full w-[88%] max-w-sm overflow-y-auto bg-[var(--card)] p-5 shadow-2xl">
       <div className="mb-5 flex items-center justify-between"><div><p className="text-lg font-black">Menu</p><p className="text-xs text-[var(--muted)]">Hi, {firstName}</p></div><button type="button" onClick={closeMenu} className="h-10 w-10 rounded-xl bg-[var(--background)] text-xl">×</button></div>
       {MENU_GROUPS.map((group) => <div key={group.title} className="mb-6"><p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-[var(--muted)]">{group.title}</p><div className="space-y-1">{group.items.map((item) => <Link key={item.href} href={item.href} onClick={closeMenu} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-[var(--foreground)] hover:bg-emerald-50 dark:hover:bg-emerald-950/40"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--background)]">{item.icon}</span><span>{item.label}</span></Link>)}</div></div>)}
-      <div className="border-t border-[var(--border)] pt-5"><button type="button" onClick={toggleProductKey} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">🔑 Product Key</button>{productKeyOpen && <div className="px-3 pb-3 text-xs text-[var(--muted)]">{loadingKeys ? 'Loading…' : keyError || (productKey ? `${productKey.key_code} · Expires ${formatExpiry(productKey.expires_at)}` : 'No active product key.')}</div>}<button type="button" onClick={toggleActivationKey} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">🔐 Activation Key</button>{activationKeyOpen && <div className="px-3 pb-3 text-xs text-[var(--muted)]">{loadingKeys ? 'Loading…' : keyError || (activationKey ? activationKey.key_code : 'No activation key.')}</div>}<button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">{theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}</button><LogoutButton className="mt-2 w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30" /></div>
+      <div className="border-t border-[var(--border)] pt-5">
+        <button type="button" onClick={shareApp} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">📤 Share App</button>
+        <button type="button" onClick={toggleProductKey} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">🔑 Product Key</button>{productKeyOpen && <div className="px-3 pb-3 text-xs text-[var(--muted)]">{loadingKeys ? 'Loading…' : keyError || (productKey ? `${productKey.key_code} · Expires ${formatExpiry(productKey.expires_at)}` : 'No active product key.')}</div>}
+        <button type="button" onClick={toggleActivationKey} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">🔐 Activation Key</button>{activationKeyOpen && <div className="px-3 pb-3 text-xs text-[var(--muted)]">{loadingKeys ? 'Loading…' : keyError || (activationKey ? activationKey.key_code : 'No activation key.')}</div>}
+        <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">{theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}</button><LogoutButton className="mt-2 w-full rounded-xl px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30" />
+      </div>
     </aside>
   </div>, document.body);
 }
