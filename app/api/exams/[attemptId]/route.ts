@@ -52,16 +52,29 @@ export async function GET(
   if (questionIds.length === 0) return NextResponse.json({ error: 'No questions were found for this exam attempt.' }, { status: 404 });
 
   const source = isSubmitted ? 'questions' : 'questions_public';
-  const select = isSubmitted ? '*, subjects(name), topics(name)' : '*, subjects(name)';
-  const { data: questions, error: questionsError } = await admin.from(source).select(select).in('id', questionIds);
+  const { data: questions, error: questionsError } = await admin.from(source).select('*, subjects(name)').in('id', questionIds);
   if (questionsError) {
     console.error('Question data load error:', questionsError);
     return NextResponse.json({ error: 'Could not load question data.' }, { status: 500 });
   }
   if (!questions || questions.length !== questionIds.length) return NextResponse.json({ error: 'Some exam questions could not be loaded.' }, { status: 500 });
 
+  const topicIds = [...new Set(questions.map((question) => question.topic_id).filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  const topicMap = new Map<string, { name: string }>();
+  if (topicIds.length > 0) {
+    const { data: topics, error: topicsError } = await admin.from('topics').select('id, name').in('id', topicIds);
+    if (topicsError) {
+      console.error('Topic data load error:', topicsError);
+    } else {
+      for (const topic of topics ?? []) topicMap.set(topic.id, { name: topic.name });
+    }
+  }
+
   const questionMap = new Map(questions.map((question) => [question.id, question]));
-  const combined = (attemptQuestions ?? []).map((aq) => ({ ...aq, question: questionMap.get(aq.question_id) }));
+  const combined = (attemptQuestions ?? []).map((aq) => ({
+    ...aq,
+    question: questionMap.get(aq.question_id),
+  }));
   if (combined.some((aq) => !aq.question)) return NextResponse.json({ error: 'One or more exam questions could not be found.' }, { status: 500 });
 
   const subjectBreakdown: Record<string, { correct: number; total: number }> = {};
@@ -73,7 +86,7 @@ export async function GET(
       subjectBreakdown[subjectName].total += 1;
       if (aq.is_correct === true) subjectBreakdown[subjectName].correct += 1;
 
-      const topicName = aq.question?.topics?.name ?? 'Unassigned topic';
+      const topicName = aq.question?.topic_id ? topicMap.get(aq.question.topic_id)?.name ?? 'Unassigned topic' : 'Unassigned topic';
       topicBreakdown[topicName] ??= { correct: 0, total: 0 };
       topicBreakdown[topicName].total += 1;
       if (aq.is_correct === true) topicBreakdown[topicName].correct += 1;
