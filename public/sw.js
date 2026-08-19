@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pwa-cache-v3';
+const CACHE_NAME = 'pwa-cache-v4';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_URLS = [
@@ -7,6 +7,7 @@ const PRECACHE_URLS = [
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
+  '/pinnacle-logo.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -35,18 +36,25 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Never cache authentication, admin, or notification-subscription endpoints.
+  // Authentication, admin, signup and push-subscription requests must stay online.
   if (
     url.pathname.startsWith('/auth/') ||
     url.pathname.startsWith('/admin') ||
     url.pathname.startsWith('/api/auth/') ||
-    url.pathname.startsWith('/api/push/')
+    url.pathname.startsWith('/api/push/') ||
+    url.pathname.startsWith('/api/contact')
   ) return;
 
-  // Cache successful same-origin GET data so previously loaded student data can
-  // still be displayed offline. Network wins whenever connectivity exists.
   const isApiGet = url.pathname.startsWith('/api/');
+  const isAppResource =
+    request.destination === 'script' ||
+    request.destination === 'style' ||
+    request.destination === 'image' ||
+    request.destination === 'font' ||
+    request.headers.get('RSC') === '1';
 
+  // Previously visited app pages/data are available offline. Online sessions
+  // still get fresh data first; the cached response is the offline fallback.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -65,7 +73,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(request).then((cached) => {
       const network = fetch(request).then((response) => {
-        if (response.ok && (isApiGet || request.destination === 'script' || request.destination === 'style' || request.destination === 'image' || request.destination === 'font' || request.headers.get('RSC') === '1')) {
+        if (response.ok && (isApiGet || isAppResource)) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => {});
         }
