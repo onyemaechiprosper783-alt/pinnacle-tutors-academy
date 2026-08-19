@@ -9,6 +9,13 @@ import { useTheme } from '@/components/ThemeProvider';
 
 const DISMISSED_KEY = 'pinnacle-notification-prompt-dismissed';
 
+function urlBase64ToUint8Array(value: string) {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
 export default function SettingsPage() {
   const supabase = createClient();
   const { theme, setTheme } = useTheme();
@@ -20,14 +27,9 @@ export default function SettingsPage() {
   const [notificationBusy, setNotificationBusy] = useState(false);
 
   useEffect(() => {
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window) || !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
-      setNotificationStatus('unsupported');
-      return;
-    }
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window) || !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) { setNotificationStatus('unsupported'); return; }
     if (Notification.permission === 'denied') { setNotificationStatus('blocked'); return; }
-    navigator.serviceWorker.register('/sw.js').then((registration) =>
-      registration.pushManager.getSubscription().then((subscription) => setNotificationStatus(subscription ? 'enabled' : 'available'))
-    ).catch(() => setNotificationStatus('available'));
+    navigator.serviceWorker.register('/sw.js').then((registration) => registration.pushManager.getSubscription().then((subscription) => setNotificationStatus(subscription ? 'enabled' : 'available'))).catch(() => setNotificationStatus('available'));
   }, []);
 
   async function enableNotifications() {
@@ -37,26 +39,20 @@ export default function SettingsPage() {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') { setNotificationStatus('blocked'); return; }
       const registration = await navigator.serviceWorker.register('/sw.js');
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: Uint8Array.from(atob(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!.replace(/-/g, '+').replace(/_/g, '/')), (char) => char.charCodeAt(0)),
-      });
+      const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!) });
       const response = await fetch('/api/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON()) });
       if (!response.ok) throw new Error('Could not save subscription');
       localStorage.setItem(DISMISSED_KEY, '1');
       setNotificationStatus('enabled');
-    } catch (notificationError) {
-      console.error('Notification setup failed:', notificationError);
-    } finally { setNotificationBusy(false); }
+    } catch (notificationError) { console.error('Notification setup failed:', notificationError); }
+    finally { setNotificationBusy(false); }
   }
 
   async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault();
-    setSuccess(false);
+    e.preventDefault(); setSuccess(false);
     const parsed = resetPasswordSchema.safeParse({ password });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
-    setError('');
-    setLoading(true);
+    setError(''); setLoading(true);
     const { error: updateError } = await supabase.auth.updateUser({ password: parsed.data.password });
     setLoading(false);
     if (updateError) { setError('Could not update password.'); return; }
