@@ -27,6 +27,26 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Apply Pinnacle app icon
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y imagemagick
+          curl -L --fail https://raw.githubusercontent.com/onyemaechiprosper783-alt/pinnacle-tutors-academy/android-app/public/icon-192.png -o /tmp/pinnacle-icon.png
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            case "$density" in
+              mdpi) size=48 ;;
+              hdpi) size=72 ;;
+              xhdpi) size=96 ;;
+              xxhdpi) size=144 ;;
+              xxxhdpi) size=192 ;;
+            esac
+            mkdir -p "android/app/src/main/res/mipmap-$density"
+            convert /tmp/pinnacle-icon.png -resize "${size}x${size}" -gravity center -background none -extent "${size}x${size}" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+            cp "android/app/src/main/res/mipmap-$density/ic_launcher.png" "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
+          done
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
