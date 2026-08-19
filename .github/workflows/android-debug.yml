@@ -29,13 +29,14 @@ jobs:
 
       - name: Apply Pinnacle app icon
         run: |
-          curl -L --fail --retry 3 https://raw.githubusercontent.com/onyemaechiprosper783-alt/pinnacle-tutors-academy/android-app/public/icon-192.png -o /tmp/pinnacle-icon.png
+          mkdir -p android/app/src/main/res/drawable
+          cp public/icon-192.png android/app/src/main/res/drawable/pinnacle_icon.png
           rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             mkdir -p "android/app/src/main/res/mipmap-$density"
-            cp /tmp/pinnacle-icon.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
-            cp /tmp/pinnacle-icon.png "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
+            cp public/icon-192.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+            cp public/icon-192.png "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
           done
 
       - name: Setup Java
