@@ -5,6 +5,24 @@ import { createAdminClient } from '@/lib/supabase/admin';
 const PUBLIC_QUESTION_FIELDS =
   'id, subject_id, topic_id, passage_id, question_text, option_a, option_b, option_c, option_d, difficulty, exam_type, year, modes, millionaire_tier, subjects(name)';
 
+type QuestionRow = {
+  id: string;
+  subject_id: string;
+  topic_id: string | null;
+  passage_id: string | null;
+  question_text: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  difficulty: string;
+  exam_type: string;
+  year: number | null;
+  modes: string[];
+  millionaire_tier: number | null;
+  subjects?: { name: string } | null;
+};
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ attemptId: string }> }
@@ -104,7 +122,7 @@ export async function GET(
   // substantially and avoids sending answer keys/explanations to the browser.
   const source = isSubmitted ? 'questions' : 'questions_public';
   const selectFields = isSubmitted ? '*, subjects(name)' : PUBLIC_QUESTION_FIELDS;
-  const { data: questions, error: questionsError } = await admin
+  const { data: questionsRaw, error: questionsError } = await admin
     .from(source)
     .select(selectFields)
     .in('id', questionIds);
@@ -113,7 +131,13 @@ export async function GET(
     console.error('Question data load error:', questionsError);
     return NextResponse.json({ error: 'Could not load question data.' }, { status: 500 });
   }
-  if (!questions || questions.length !== questionIds.length) {
+
+  // Supabase's inferred type for the dynamic table/view query cannot describe
+  // the shared question shape, even though both sources return topic_id.
+  // Normalize the result once so the rest of this route remains type-safe.
+  const questions = (questionsRaw ?? []) as unknown as QuestionRow[];
+
+  if (questions.length !== questionIds.length) {
     return NextResponse.json({ error: 'Some exam questions could not be loaded.' }, { status: 500 });
   }
 
