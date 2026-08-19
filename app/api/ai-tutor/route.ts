@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { getCurrentProfile } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -17,53 +17,28 @@ export async function POST(request: Request) {
   try {
     const profile = await getCurrentProfile();
     if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
     const body = await request.json();
     const message = typeof body?.message === 'string' ? body.message.trim() : '';
     if (!message) return NextResponse.json({ error: 'Message is required.' }, { status: 400 });
     if (message.length > 4000) return NextResponse.json({ error: 'Message is too long.' }, { status: 400 });
+    if (looksLikeActiveAttempt(body?.activeAttempt)) return NextResponse.json({ error: 'Nia is unavailable while you are writing an exam or challenge.' }, { status: 403 });
 
-    if (looksLikeActiveAttempt(body?.activeAttempt)) {
-      return NextResponse.json({ error: 'Nia is unavailable while you are writing an exam or challenge.' }, { status: 403 });
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.error('AI Tutor configuration error: OPENAI_API_KEY is missing from this deployment.');
-      return NextResponse.json({ error: 'AI Tutor is not configured yet. Please redeploy after checking the Vercel environment variable.' }, { status: 503 });
+      console.error('AI Tutor configuration error: GEMINI_API_KEY is missing.');
+      return NextResponse.json({ error: 'AI Tutor is not configured yet. Please check the Vercel GEMINI_API_KEY setting and redeploy.' }, { status: 503 });
     }
 
-    const client = new OpenAI({ apiKey });
-    const response = await client.responses.create({
-      model: 'gpt-5.6',
-      instructions: SYSTEM_PROMPT,
-      input: message,
-      max_output_tokens: 1200,
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: message,
+      config: { systemInstruction: SYSTEM_PROMPT, maxOutputTokens: 1200 },
     });
 
-    return NextResponse.json({ answer: response.output_text || 'I could not generate an answer right now.' });
+    return NextResponse.json({ answer: response.text?.trim() || 'I could not generate an answer right now.' });
   } catch (error) {
-    console.error('AI Tutor error:', error);
-
-    if (error instanceof OpenAI.APIError) {
-      console.error('OpenAI API error details:', {
-        status: error.status,
-        code: error.code,
-        type: error.type,
-        requestId: error.requestID,
-      });
-
-      if (error.status === 401) {
-        return NextResponse.json({ error: 'The AI Tutor API key was rejected. Please check the Vercel OPENAI_API_KEY setting.' }, { status: 502 });
-      }
-      if (error.status === 429) {
-        return NextResponse.json({ error: 'The AI Tutor account has reached its API usage or rate limit. Please check your OpenAI API billing/usage.' }, { status: 429 });
-      }
-      if (error.status === 404) {
-        return NextResponse.json({ error: 'The selected AI model is unavailable for this API project.' }, { status: 502 });
-      }
-    }
-
+    console.error('AI Tutor Gemini error:', error);
     return NextResponse.json({ error: 'The AI Tutor could not answer right now. Please try again.' }, { status: 500 });
   }
 }
