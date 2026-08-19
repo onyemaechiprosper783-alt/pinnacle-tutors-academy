@@ -38,17 +38,8 @@ export function MobileStudentMenu({ firstName }: { firstName: string; fullName: 
   function formatExpiry(date: string | null) { if (!date) return 'No expiry'; return new Date(date).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' }); }
   async function shareApp() {
     const shareData = { title: 'Pinnacle Tutors Academy', text: 'Join me on Pinnacle Tutors Academy for practice, CBT exams and learning.', url: window.location.origin };
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-        return;
-      }
-      await navigator.clipboard.writeText(window.location.origin);
-      alert('App link copied. You can paste it anywhere to share.');
-    } catch (error) {
-      if ((error as DOMException)?.name === 'AbortError') return;
-      try { await navigator.clipboard.writeText(window.location.origin); alert('App link copied.'); } catch { alert(window.location.origin); }
-    }
+    try { if (navigator.share) { await navigator.share(shareData); return; } await navigator.clipboard.writeText(window.location.origin); alert('App link copied. You can paste it anywhere to share.'); }
+    catch (error) { if ((error as DOMException)?.name === 'AbortError') return; try { await navigator.clipboard.writeText(window.location.origin); alert('App link copied.'); } catch { alert(window.location.origin); } }
   }
   if (!mounted || !open) return null;
   return createPortal(<div className="fixed inset-0 z-[99999] md:hidden">
@@ -57,6 +48,7 @@ export function MobileStudentMenu({ firstName }: { firstName: string; fullName: 
       <div className="mb-5 flex items-center justify-between"><div><p className="text-lg font-black">Menu</p><p className="text-xs text-[var(--muted)]">Hi, {firstName}</p></div><button type="button" onClick={closeMenu} className="h-10 w-10 rounded-xl bg-[var(--background)] text-xl">×</button></div>
       {MENU_GROUPS.map((group) => <div key={group.title} className="mb-6"><p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest text-[var(--muted)]">{group.title}</p><div className="space-y-1">{group.items.map((item) => <Link key={item.href} href={item.href} onClick={closeMenu} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-[var(--foreground)] hover:bg-emerald-50 dark:hover:bg-emerald-950/40"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--background)]">{item.icon}</span><span>{item.label}</span></Link>)}</div></div>)}
       <div className="border-t border-[var(--border)] pt-5">
+        <Link href="/ai-tutor" onClick={closeMenu} className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold hover:bg-[var(--background)]">🤖 <span>Meet Nia — AI Tutor</span></Link>
         <button type="button" onClick={shareApp} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">📤 Share App</button>
         <button type="button" onClick={toggleProductKey} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">🔑 Product Key</button>{productKeyOpen && <div className="px-3 pb-3 text-xs text-[var(--muted)]">{loadingKeys ? 'Loading…' : keyError || (productKey ? `${productKey.key_code} · Expires ${formatExpiry(productKey.expires_at)}` : 'No active product key.')}</div>}
         <button type="button" onClick={toggleActivationKey} className="w-full rounded-xl px-3 py-3 text-left text-sm font-semibold hover:bg-[var(--background)]">🔐 Activation Key</button>{activationKeyOpen && <div className="px-3 pb-3 text-xs text-[var(--muted)]">{loadingKeys ? 'Loading…' : keyError || (activationKey ? activationKey.key_code : 'No activation key.')}</div>}
