@@ -23,23 +23,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+          cache: npm
 
-      - name: Install dependencies and generate lockfile
-        run: npm install
+      - name: Generate package-lock.json
+        run: npm install --package-lock-only
 
       - name: Verify lockfile and web-push
         run: |
           test -f package-lock.json
           node -e "const p=require('./package-lock.json'); if(!p.packages || !p.packages['node_modules/web-push']) process.exit(1)"
 
-      - name: Commit lockfile if changed
+      - name: Commit lockfile
         run: |
-          if git diff --quiet -- package-lock.json; then
-            echo "package-lock.json is already up to date."
+          if [ -z "$(git status --porcelain -- package-lock.json)" ]; then
+            echo "package-lock.json is already tracked and unchanged."
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package-lock.json
-          git commit -m "chore: generate npm lockfile"
+          git commit -m "chore: add npm lockfile"
           git push origin HEAD:pwa
