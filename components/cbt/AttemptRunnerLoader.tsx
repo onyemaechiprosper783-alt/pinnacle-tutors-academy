@@ -27,10 +27,13 @@ export function AttemptRunnerLoader({ attemptId, mode }: { attemptId: string; mo
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch(`/api/exams/${attemptId}`, { cache: 'no-store' })
-      .then(async (res) => {
-        const data = (await res.json()) as AttemptData;
-        if (!res.ok) throw new Error((data as unknown as { error?: string }).error ?? 'Could not load exam.');
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch(`/api/exams/${attemptId}`, { cache: 'no-store' });
+        const data = (await res.json()) as AttemptData & { error?: string };
+        if (!res.ok) throw new Error(data.error ?? 'Could not load exam.');
 
         if (data.attempt.status !== 'in_progress') {
           router.replace(`/results/${attemptId}`);
@@ -61,9 +64,32 @@ export function AttemptRunnerLoader({ attemptId, mode }: { attemptId: string; mo
               ? globalRemaining
               : Math.min(attemptRemaining, globalRemaining);
 
-        setState({ questions, durationSeconds: remainingSeconds });
-      })
-      .catch((e) => setError(e.message));
+        if (remainingSeconds !== null && remainingSeconds <= 0 && mode === 'cbt') {
+          const submit = await fetch(`/api/exams/${attemptId}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_submitted: true }),
+          });
+
+          if (!submit.ok) {
+            const submitData = await submit.json().catch(() => null);
+            throw new Error(submitData?.error ?? 'The challenge has ended and could not be submitted automatically.');
+          }
+
+          if (!cancelled) router.replace(`/results/${attemptId}`);
+          return;
+        }
+
+        if (!cancelled) setState({ questions, durationSeconds: remainingSeconds });
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load exam.');
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [attemptId, mode, router]);
 
   if (error) return <div className="rounded-xl bg-amber-50 p-6 text-center text-amber-800">{error}</div>;
