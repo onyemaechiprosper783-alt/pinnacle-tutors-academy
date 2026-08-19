@@ -1,0 +1,39 @@
+name: Generate npm lockfile
+
+on:
+  push:
+    branches:
+      - pwa
+
+permissions:
+  contents: write
+
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pwa branch
+        uses: actions/checkout@v6
+        with:
+          ref: pwa
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20.x'
+
+      - name: Generate package-lock.json
+        run: npm install --package-lock-only
+
+      - name: Commit lockfile if changed
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "package-lock.json is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore: generate npm lockfile"
+          git push origin HEAD:pwa
