@@ -1,7 +1,13 @@
-import { createBrowserClient } from '@supabase/ssr';
+'use client';
+
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+
+let client: ReturnType<typeof createSupabaseClient> | null = null;
 
 export function createClient() {
-  return createBrowserClient(
+  if (client) return client;
+
+  client = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -9,7 +15,10 @@ export function createClient() {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        storageKey: 'pinnacle-tutors-auth',
       },
     }
   );
+
+  return client;
 }
