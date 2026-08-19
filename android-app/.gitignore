@@ -1,0 +1,9 @@
+# Capacitor / Android generated files
+.gradle/
+.idea/
+*.iml
+local.properties
+.DS_Store
+build/
+.cxx/
+.externalNativeBuild/
