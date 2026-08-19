@@ -2,6 +2,15 @@
 
 import { FormEvent, useState } from 'react';
 
+function renderTutorText(text: string) {
+  return text.split('\n').map((line, index) => {
+    const cleaned = line.replace(/^#{1,6}\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/\$\$(.*?)\$\$/g, '$1').replace(/\$(.*?)\$/g, '$1');
+    const isBullet = /^\s*[-*]\s+/.test(cleaned);
+    const content = cleaned.replace(/^\s*[-*]\s+/, '').replace(/\^\{([^}]+)\}/g, '$1').replace(/\^([0-9]+)/g, '$1');
+    return <p key={index} className={isBullet ? 'relative pl-5 before:absolute before:left-1 before:top-3 before:h-1.5 before:w-1.5 before:rounded-full before:bg-emerald-500' : 'min-h-[1.5rem]'}>{content}</p>;
+  });
+}
+
 export default function AiTutorPage() {
   const [message, setMessage] = useState('');
   const [answer, setAnswer] = useState('');
@@ -23,8 +32,9 @@ export default function AiTutorPage() {
   }
 
   return <main className="mx-auto max-w-3xl px-4 py-6">
-    <div className="mb-6 rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-700 p-6 text-white shadow-lg">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-80">Pinnacle AI Tutor</p>
+    <div className="relative mb-6 overflow-hidden rounded-[30px] bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-6 text-white shadow-xl shadow-emerald-900/15">
+      <div className="absolute -right-8 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+      <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/75">Pinnacle AI Tutor</p>
       <h1 className="mt-1 text-3xl font-black">Meet Nia 🤖</h1>
       <p className="mt-2 max-w-xl text-sm leading-6 text-white/90">Ask Nia anything you want to understand. She teaches step by step instead of simply giving you an answer.</p>
     </div>
@@ -32,10 +42,10 @@ export default function AiTutorPage() {
       <form onSubmit={ask}>
         <label className="mb-2 block text-sm font-bold">What would you like to learn?</label>
         <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} maxLength={4000} placeholder="Example: Explain photosynthesis to me like I'm preparing for UTME…" className="w-full resize-none rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500" />
-        <button type="submit" disabled={!message.trim() || loading} className="mt-3 w-full rounded-2xl bg-emerald-600 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{loading ? 'Nia is thinking…' : 'Ask Nia'}</button>
+        <button type="submit" disabled={!message.trim() || loading} className="mt-3 w-full rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-3 font-bold text-white shadow-md transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50">{loading ? 'Nia is thinking…' : 'Ask Nia ✨'}</button>
       </form>
       {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{error}</p>}
-      {answer && <section className="mt-6 rounded-2xl bg-[var(--background)] p-5"><div className="mb-3 text-sm font-black">🤖 Nia's explanation</div><div className="whitespace-pre-wrap text-sm leading-7 text-[var(--foreground)]">{answer}</div></section>}
+      {answer && <section className="mt-6 rounded-2xl bg-[var(--background)] p-5"><div className="mb-3 flex items-center gap-2 text-sm font-black"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950">🤖</span>Nia's explanation</div><div className="space-y-1 text-sm leading-7 text-[var(--foreground)]">{renderTutorText(answer)}</div></section>}
     </div>
   </main>;
 }
