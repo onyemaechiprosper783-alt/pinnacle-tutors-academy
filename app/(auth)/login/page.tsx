@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -15,7 +15,46 @@ function LoginForm() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [serverError, setServerError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function restoreSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+
+      if (!session?.user) {
+        setCheckingSession(false);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!mounted) return;
+
+      const next = params.get('next');
+      if (profile?.role === 'admin' || profile?.role === 'super_admin') {
+        router.replace(next && next.startsWith('/admin') ? next : '/admin/dashboard');
+      } else {
+        router.replace(next && !next.startsWith('/admin') ? next : '/dashboard');
+      }
+    }
+
+    restoreSession().catch(() => {
+      if (mounted) setCheckingSession(false);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [router, params, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setServerError('');
@@ -37,6 +76,17 @@ function LoginForm() {
     if (profile?.role === 'admin' || profile?.role === 'super_admin') router.push(next && next.startsWith('/admin') ? next : '/admin/dashboard');
     else router.push(next && !next.startsWith('/admin') ? next : '/dashboard');
     router.refresh();
+  }
+
+  if (checkingSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
+        <div className="text-center">
+          <img src="/pinnacle-logo.png" alt="Pinnacle Tutors Academy" className="mx-auto h-20 w-20 rounded-2xl object-contain" />
+          <p className="mt-4 text-sm font-bold text-[var(--muted)]">Restoring your session…</p>
+        </div>
+      </main>
+    );
   }
 
   return (
