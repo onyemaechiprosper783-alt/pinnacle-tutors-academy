@@ -16,7 +16,6 @@ const NAV = [
   { href: '/admin/challenge', label: 'UTME Challenge' },
   { href: '/admin/millionaire', label: 'Millionaire' },
   { href: '/admin/results', label: 'Results' },
-  { href: '/admin/leaderboard', label: 'Leaderboard' },
   { href: '/admin/testimonials', label: 'Testimonials' },
   { href: '/admin/community', label: 'Community' },
   { href: '/admin/announcements', label: 'Announcements' },
@@ -29,9 +28,6 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Middleware already blocks non-admins from reaching here; this second
-  // check just prevents a flash of admin UI if middleware is ever bypassed
-  // in a future refactor — defense in depth, not the primary guard.
   const profile = await getCurrentProfile();
 
   if (
