@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { data: round, error: roundError } = await admin
     .from('challenge_rounds')
-    .select('id, title, difficulty, question_count, duration_seconds, opens_at, closes_at, is_active')
+    .select('id, title, difficulty, question_count, duration_seconds, opens_at, closes_at, is_active, activated_at')
     .eq('id', round_id)
     .single();
 
@@ -41,13 +41,20 @@ export async function POST(request: Request) {
   if (round.opens_at && new Date(round.opens_at) > now) return NextResponse.json({ error: 'This challenge round has not opened yet.' }, { status: 400 });
   if (round.closes_at && new Date(round.closes_at) <= now) return NextResponse.json({ error: 'This challenge round has already closed.' }, { status: 400 });
 
-  // The challenge end time is global. A student who joins late gets only the
-  // time remaining until closes_at, never a fresh full round timer.
+  // The challenge has one global clock. It starts when the admin activates
+  // the round, not when an individual student joins it.
   const configuredDuration = Math.max(1, round.duration_seconds ?? 120 * 60);
-  const secondsUntilGlobalClose = round.closes_at
-    ? Math.max(1, Math.floor((new Date(round.closes_at).getTime() - now.getTime()) / 1000))
-    : configuredDuration;
-  const effectiveDurationSeconds = Math.min(configuredDuration, secondsUntilGlobalClose);
+  const activatedAt = round.activated_at ? new Date(round.activated_at) : now;
+  const configuredDeadline = new Date(activatedAt.getTime() + configuredDuration * 1000);
+  const explicitClose = round.closes_at ? new Date(round.closes_at) : null;
+  const globalDeadline = explicitClose && explicitClose < configuredDeadline ? explicitClose : configuredDeadline;
+  const secondsUntilGlobalDeadline = Math.floor((globalDeadline.getTime() - now.getTime()) / 1000);
+
+  if (secondsUntilGlobalDeadline <= 0) {
+    return NextResponse.json({ error: 'This challenge has ended.' }, { status: 400 });
+  }
+
+  const effectiveDurationSeconds = Math.min(configuredDuration, secondsUntilGlobalDeadline);
 
   const { data: subjects, error: subjectsError } = await admin.from('subjects').select('id').in('id', selected_subject_ids);
   if (subjectsError || !subjects || subjects.length !== 3) {
@@ -126,6 +133,7 @@ export async function POST(request: Request) {
           additional_subject_questions: 40,
           total_questions: 180,
           locked: true,
+          global_deadline: globalDeadline.toISOString(),
         },
       },
       duration_seconds: effectiveDurationSeconds,
@@ -156,5 +164,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Challenge started, but the participant record could not be linked.' }, { status: 500 });
   }
 
-  return NextResponse.json({ participant_id: participantId, attempt_id: attempt.id, question_count: 180, duration_seconds: attempt.duration_seconds });
+  return NextResponse.json({ participant_id: participantId, attempt_id: attempt.id, question_count: 180, duration_seconds: attempt.duration_seconds, global_deadline: globalDeadline.toISOString() });
 }
