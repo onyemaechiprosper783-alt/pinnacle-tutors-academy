@@ -41,24 +41,36 @@ export async function GET(
   };
 
   const roundId = config.round_id ?? config.challenge?.round_id ?? null;
-  const isChallenge = attempt.mode === 'cbt' && !!roundId;
+  const isChallenge = (attempt.mode === 'cbt' || attempt.mode === 'utme_challenge') && !!roundId;
   const isSubmitted = attempt.status !== 'in_progress';
 
-  // challenge_rounds is the authoritative release switch. The attempt config
-  // is also supported for compatibility with older released attempts.
   let resultsReleased =
     config.results_released === true ||
     config.challenge?.results_released === true;
 
+  let challengeGlobalDeadline: string | null = null;
+
   if (isChallenge && roundId) {
     const { data: round } = await admin
       .from('challenge_rounds')
-      .select('results_released')
+      .select('results_released, activated_at, closes_at, duration_seconds')
       .eq('id', roundId)
       .maybeSingle();
 
     if (round?.results_released === true) {
       resultsReleased = true;
+    }
+
+    if (round?.activated_at) {
+      const activatedMs = new Date(round.activated_at).getTime();
+      const durationMs = Number(round.duration_seconds ?? 0) * 1000;
+      const durationDeadline = durationMs > 0 ? activatedMs + durationMs : null;
+      const closesMs = round.closes_at ? new Date(round.closes_at).getTime() : null;
+      const validClosesMs = closesMs !== null && Number.isFinite(closesMs) ? closesMs : null;
+      const candidates = [durationDeadline, validClosesMs].filter((value): value is number => value !== null && Number.isFinite(value));
+      if (candidates.length > 0) {
+        challengeGlobalDeadline = new Date(Math.min(...candidates)).toISOString();
+      }
     }
   }
 
@@ -79,6 +91,7 @@ export async function GET(
       results_hidden: true,
       message:
         'Your challenge has been submitted successfully. Results will be available when they are released.',
+      challenge_global_deadline: challengeGlobalDeadline,
     });
   }
 
@@ -141,5 +154,6 @@ export async function GET(
     challenge: isChallenge,
     results_hidden: isChallenge && isStudent && isSubmitted && !resultsReleased,
     challenge_config: isChallenge ? config.challenge ?? null : null,
+    challenge_global_deadline: challengeGlobalDeadline,
   });
 }
