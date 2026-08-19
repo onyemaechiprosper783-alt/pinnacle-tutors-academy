@@ -2,14 +2,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/supabase/server';
 import { LogoutButton } from '@/components/layout/LogoutButton';
-import {
-  MobileMenuProvider,
-  MobileMenuTrigger,
-  MobileStudentMenu,
-} from '@/components/layout/MobileStudentMenu';
+import { MobileMenuProvider, MobileMenuTrigger, MobileStudentMenu } from '@/components/layout/MobileStudentMenu';
 import ThemeProvider from '@/components/ThemeProvider';
 import AnnouncementBell from '@/components/AnnouncementBell';
 import AITutorSideButton from '@/components/ai-tutor/AITutorSideButton';
+import NotificationPrompt from '@/components/notifications/NotificationPrompt';
 
 const NAV_GROUPS = [
   { title: 'Home & Learning', items: [
@@ -35,7 +32,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
     <ThemeProvider>
       <MobileMenuProvider>
         <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors duration-200 md:flex">
-          <aside className="hidden w-72 shrink-0 border-r border-[var(--border)] bg-[var(--card)] shadow-[4px_0_24px_rgba(15,23,42,0.03)] transition-colors duration-200 md:flex md:flex-col dark:shadow-none">
+          <aside className="hidden w-72 shrink-0 border-r border-[var(--border)] bg-[var(--card)] shadow-[4px_0_24px_rgba(15,23,42,0.03)] transition-colors duration-200 dark:shadow-none md:flex md:flex-col">
             <div className="border-b border-[var(--border)] bg-gradient-to-r from-brand-50/70 to-accent-50/50 px-5 py-5 dark:from-brand-950/30 dark:to-accent-950/20">
               <Link href="/dashboard" className="flex items-center gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5"><img src="/pinnacle-logo.png" alt="Pinnacle Tutors Academy" className="h-full w-full object-contain" /></div><div><p className="text-base font-black text-[var(--foreground)]">Pinnacle Tutors</p><p className="text-xs font-semibold text-brand-600 dark:text-brand-400">Learn • Practice • Succeed</p></div></Link>
             </div>
@@ -52,6 +49,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
           </div>
           <MobileStudentMenu firstName={firstName} fullName={profile.full_name || 'Student'} />
           <AITutorSideButton />
+          <NotificationPrompt />
         </div>
       </MobileMenuProvider>
     </ThemeProvider>
