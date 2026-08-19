@@ -21,6 +21,7 @@ interface Feedback {
 
 const ENGLISH_SUBJECT_ID = 'e5705892-de46-425c-af42-e37a3eddc93d';
 const LEKKI_HEADMASTER_SUBJECT_ID = '3bca9d00-18fd-4064-b3ac-41da6e7eefa6';
+const BOOKMARK_STORAGE_KEY = 'pinnacle-bookmarked-questions';
 
 type QuestionWithSubject = QuestionPublic & {
   subject_id?: string;
@@ -59,8 +60,30 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
   const [challengeDeadline, setChallengeDeadline] = useState<string | null>(null);
   const [challengeSecondsLeft, setChallengeSecondsLeft] = useState<number | null>(null);
   const [challengeLoading, setChallengeLoading] = useState(mode === 'cbt');
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
 
   const handleSubmitRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(BOOKMARK_STORAGE_KEY) ?? '[]') as Array<{ id: string }>;
+      setBookmarkedIds(new Set(saved.map((item) => item.id)));
+    } catch {
+      setBookmarkedIds(new Set());
+    }
+  }, []);
+
+  const toggleBookmark = useCallback((question: QuestionWithSubject) => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(BOOKMARK_STORAGE_KEY) ?? '[]') as QuestionWithSubject[];
+      const exists = saved.some((item) => item.id === question.id);
+      const next = exists ? saved.filter((item) => item.id !== question.id) : [...saved, question];
+      localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(next));
+      setBookmarkedIds(new Set(next.map((item) => item.id)));
+    } catch (error) {
+      console.error('Bookmark error:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (mode !== 'cbt') {
@@ -197,11 +220,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
   async function selectAnswer(letter: 'A' | 'B' | 'C' | 'D') {
     if (!currentQuestion || answerLoading || submitting) return;
-
-    // IMPORTANT: selecting an answer must never submit the exam.
-    // The challenge deadline timer above is the only automatic submit trigger.
     if (mode === 'practice' && feedback[currentQuestion.id]) return;
-
     setAnswers((previous) => ({ ...previous, [currentQuestion.id]: letter }));
     setAnswerLoading(true);
     try {
@@ -213,14 +232,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error ?? 'Could not save answer.');
       if (mode === 'practice' && data.correct_answer) {
-        setFeedback((previous) => ({
-          ...previous,
-          [currentQuestion.id]: {
-            is_correct: Boolean(data.is_correct),
-            correct_answer: data.correct_answer,
-            explanation: data.explanation ?? null,
-          },
-        }));
+        setFeedback((previous) => ({ ...previous, [currentQuestion.id]: { is_correct: Boolean(data.is_correct), correct_answer: data.correct_answer, explanation: data.explanation ?? null } }));
       }
     } catch (error) {
       console.error('Answer error:', error);
@@ -256,6 +268,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
   const displayTimer = mode === 'cbt' && challengeDeadline ? formatSeconds(challengeSecondsLeft ?? 0) : normalTimer.display;
   const timerIsLow = mode === 'cbt' && challengeDeadline ? (challengeSecondsLeft ?? 0) <= 300 : normalTimer.isLow;
+  const isBookmarked = bookmarkedIds.has(currentQuestion.id);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -267,7 +280,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
         {mode === 'cbt' && cbtSections.length > 0 && <div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-700">{cbtSections.map((section) => { const active = activeSectionKey === section.key; const answered = section.questions.filter((q) => !!answers[q.id]).length; return <button key={section.key} type="button" onClick={() => { setActiveSectionKey(section.key); setCurrentIndex(0); }} className={`whitespace-nowrap px-4 py-3 text-sm font-semibold transition ${active ? 'border-b-4 border-emerald-500 text-emerald-400' : 'text-slate-300 hover:text-white'}`}>{section.name}<span className="ml-1 text-xs opacity-60">{answered}/{section.count}</span></button>; })}</div>}
 
-        <div className="mb-5 flex items-center justify-between gap-3"><div className="rounded-full border-2 border-slate-500 px-5 py-2.5"><span className="font-bold">Question {safeCurrentIndex + 1}/{sectionQuestions.length}</span></div><button type="button" onClick={() => setShowCalculator((value) => !value)} className="rounded-full border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">🧮 Calculator</button></div>
+        <div className="mb-5 flex items-center justify-between gap-3"><div className="rounded-full border-2 border-slate-500 px-5 py-2.5"><span className="font-bold">Question {safeCurrentIndex + 1}/{sectionQuestions.length}</span></div><div className="flex items-center gap-2"><button type="button" onClick={() => toggleBookmark(currentQuestion)} className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${isBookmarked ? 'border-amber-400 bg-amber-400/15 text-amber-300' : 'border-slate-600 text-slate-300 hover:bg-slate-800'}`}>{isBookmarked ? '🔖 Saved' : '🔖 Bookmark'}</button><button type="button" onClick={() => setShowCalculator((value) => !value)} className="rounded-full border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">🧮 Calculator</button></div></div>
         {showCalculator && <div className="mb-5 rounded-2xl border border-slate-700 bg-slate-900 p-4"><Calculator /></div>}
 
         <div className="rounded-2xl bg-slate-900 p-5 sm:p-7">
