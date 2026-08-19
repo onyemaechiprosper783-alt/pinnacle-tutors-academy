@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -29,22 +29,13 @@ jobs:
 
       - name: Apply Pinnacle app icon
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y imagemagick
-          curl -L --fail https://raw.githubusercontent.com/onyemaechiprosper783-alt/pinnacle-tutors-academy/android-app/public/icon-192.png -o /tmp/pinnacle-icon.png
+          curl -L --fail --retry 3 https://raw.githubusercontent.com/onyemaechiprosper783-alt/pinnacle-tutors-academy/android-app/public/icon-192.png -o /tmp/pinnacle-icon.png
           rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            case "$density" in
-              mdpi) size=48 ;;
-              hdpi) size=72 ;;
-              xhdpi) size=96 ;;
-              xxhdpi) size=144 ;;
-              xxxhdpi) size=192 ;;
-            esac
             mkdir -p "android/app/src/main/res/mipmap-$density"
-            convert /tmp/pinnacle-icon.png -resize "${size}x${size}" -gravity center -background none -extent "${size}x${size}" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
-            cp "android/app/src/main/res/mipmap-$density/ic_launcher.png" "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
+            cp /tmp/pinnacle-icon.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+            cp /tmp/pinnacle-icon.png "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
           done
 
       - name: Setup Java
