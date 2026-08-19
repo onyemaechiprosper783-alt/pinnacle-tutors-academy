@@ -8,9 +8,7 @@ export async function GET(
 ) {
   const caller = await getCurrentProfile();
 
-  if (!caller) {
-    return NextResponse.json({ error: 'Not authorized.' }, { status: 401 });
-  }
+  if (!caller) return NextResponse.json({ error: 'Not authorized.' }, { status: 401 });
 
   const { attemptId } = await params;
   const admin = createAdminClient();
@@ -21,11 +19,7 @@ export async function GET(
     .eq('id', attemptId)
     .single();
 
-  if (
-    attemptError ||
-    !attempt ||
-    (attempt.student_id !== caller.id && caller.role === 'student')
-  ) {
+  if (attemptError || !attempt || (attempt.student_id !== caller.id && caller.role === 'student')) {
     return NextResponse.json({ error: 'Attempt not found.' }, { status: 404 });
   }
 
@@ -33,21 +27,14 @@ export async function GET(
   const config = (attempt.config ?? {}) as {
     round_id?: string | null;
     results_released?: boolean;
-    challenge?: {
-      round_id?: string | null;
-      participant_id?: string | null;
-      results_released?: boolean;
-    } | null;
+    challenge?: { round_id?: string | null; participant_id?: string | null; results_released?: boolean } | null;
   };
 
   const roundId = config.round_id ?? config.challenge?.round_id ?? null;
   const isChallenge = (attempt.mode === 'cbt' || attempt.mode === 'utme_challenge') && !!roundId;
   const isSubmitted = attempt.status !== 'in_progress';
 
-  let resultsReleased =
-    config.results_released === true ||
-    config.challenge?.results_released === true;
-
+  let resultsReleased = config.results_released === true || config.challenge?.results_released === true;
   let challengeGlobalDeadline: string | null = null;
 
   if (isChallenge && roundId) {
@@ -57,9 +44,7 @@ export async function GET(
       .eq('id', roundId)
       .maybeSingle();
 
-    if (round?.results_released === true) {
-      resultsReleased = true;
-    }
+    if (round?.results_released === true) resultsReleased = true;
 
     if (round?.activated_at) {
       const activatedMs = new Date(round.activated_at).getTime();
@@ -68,9 +53,7 @@ export async function GET(
       const closesMs = round.closes_at ? new Date(round.closes_at).getTime() : null;
       const validClosesMs = closesMs !== null && Number.isFinite(closesMs) ? closesMs : null;
       const candidates = [durationDeadline, validClosesMs].filter((value): value is number => value !== null && Number.isFinite(value));
-      if (candidates.length > 0) {
-        challengeGlobalDeadline = new Date(Math.min(...candidates)).toISOString();
-      }
+      if (candidates.length > 0) challengeGlobalDeadline = new Date(Math.min(...candidates)).toISOString();
     }
   }
 
@@ -87,10 +70,11 @@ export async function GET(
       },
       questions: [],
       subject_breakdown: {},
+      topic_breakdown: {},
+      weak_topics: [],
       challenge: true,
       results_hidden: true,
-      message:
-        'Your challenge has been submitted successfully. Results will be available when they are released.',
+      message: 'Your challenge has been submitted successfully. Results will be available when they are released.',
       challenge_global_deadline: challengeGlobalDeadline,
     });
   }
@@ -107,14 +91,11 @@ export async function GET(
   }
 
   const questionIds = (attemptQuestions ?? []).map((aq) => aq.question_id);
-
-  if (questionIds.length === 0) {
-    return NextResponse.json({ error: 'No questions were found for this exam attempt.' }, { status: 404 });
-  }
+  if (questionIds.length === 0) return NextResponse.json({ error: 'No questions were found for this exam attempt.' }, { status: 404 });
 
   const { data: questions, error: questionsError } = await admin
     .from(isSubmitted ? 'questions' : 'questions_public')
-    .select('*, subjects(name)')
+    .select('*, subjects(name), topics(name)')
     .in('id', questionIds);
 
   if (questionsError) {
@@ -127,16 +108,14 @@ export async function GET(
   }
 
   const questionMap = new Map(questions.map((question) => [question.id, question]));
-  const combined = (attemptQuestions ?? []).map((aq) => ({
-    ...aq,
-    question: questionMap.get(aq.question_id),
-  }));
+  const combined = (attemptQuestions ?? []).map((aq) => ({ ...aq, question: questionMap.get(aq.question_id) }));
 
   if (combined.some((aq) => !aq.question)) {
     return NextResponse.json({ error: 'One or more exam questions could not be found.' }, { status: 500 });
   }
 
   const subjectBreakdown: Record<string, { correct: number; total: number }> = {};
+  const topicBreakdown: Record<string, { correct: number; total: number }> = {};
 
   if (isSubmitted) {
     for (const aq of combined) {
@@ -144,13 +123,25 @@ export async function GET(
       subjectBreakdown[subjectName] ??= { correct: 0, total: 0 };
       subjectBreakdown[subjectName].total += 1;
       if (aq.is_correct === true) subjectBreakdown[subjectName].correct += 1;
+
+      const topicName = aq.question?.topics?.name ?? 'Unassigned topic';
+      topicBreakdown[topicName] ??= { correct: 0, total: 0 };
+      topicBreakdown[topicName].total += 1;
+      if (aq.is_correct === true) topicBreakdown[topicName].correct += 1;
     }
   }
+
+  const weakTopics = Object.entries(topicBreakdown)
+    .filter(([, section]) => section.total > 0 && section.correct / section.total < 0.6)
+    .sort((a, b) => (a[1].correct / a[1].total) - (b[1].correct / b[1].total))
+    .map(([topic, section]) => ({ topic, ...section, percentage: Math.round((section.correct / section.total) * 100) }));
 
   return NextResponse.json({
     attempt,
     questions: combined,
     subject_breakdown: subjectBreakdown,
+    topic_breakdown: topicBreakdown,
+    weak_topics: weakTopics,
     challenge: isChallenge,
     results_hidden: isChallenge && isStudent && isSubmitted && !resultsReleased,
     challenge_config: isChallenge ? config.challenge ?? null : null,
