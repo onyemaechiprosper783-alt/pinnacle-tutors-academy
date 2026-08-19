@@ -5,7 +5,6 @@ import { LogoutButton } from '@/components/layout/LogoutButton';
 import {
   MobileMenuProvider,
   MobileMenuTrigger,
-  MobileMenuBottomButton,
   MobileStudentMenu,
 } from '@/components/layout/MobileStudentMenu';
 import ThemeProvider from '@/components/ThemeProvider';
@@ -54,13 +53,6 @@ const NAV_GROUPS = [
   },
 ];
 
-const MOBILE_NAV = [
-  { href: '/dashboard', label: 'Home', icon: '🏠' },
-  { href: '/practice', label: 'Practice', icon: '📚' },
-  { href: '/cbt', label: 'CBT', icon: '💻' },
-  { href: '/results', label: 'Results', icon: '📊' },
-];
-
 export default async function StudentLayout({
   children,
 }: {
@@ -68,16 +60,14 @@ export default async function StudentLayout({
 }) {
   const profile = await getCurrentProfile();
 
-  if (!profile) {
-    redirect('/login');
-  }
+  if (!profile) redirect('/login');
 
   const firstName = profile.full_name?.split(' ')[0] || 'Student';
 
   return (
     <ThemeProvider>
       <MobileMenuProvider>
-        <div className="min-h-screen bg-[var(--background)] pb-20 text-[var(--foreground)] transition-colors duration-200 md:flex md:pb-0">
+        <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] transition-colors duration-200 md:flex">
           <aside className="hidden w-72 shrink-0 border-r border-[var(--border)] bg-[var(--card)] transition-colors duration-200 md:flex md:flex-col">
             <div className="border-b border-[var(--border)] px-5 py-5">
               <Link href="/dashboard" className="flex items-center gap-3">
@@ -136,18 +126,6 @@ export default async function StudentLayout({
 
             <div className="hidden h-16 items-center justify-end border-b border-[var(--border)] bg-[var(--card)] px-6 md:flex"><AnnouncementBell /></div>
             <main className="min-h-[calc(100vh-64px)] p-4 sm:p-6 md:p-8">{children}</main>
-
-            <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--border)] bg-[var(--card)]/95 px-1 pb-safe backdrop-blur transition-colors duration-200 md:hidden">
-              <div className="mx-auto flex max-w-lg justify-around">
-                {MOBILE_NAV.map((item) => (
-                  <Link key={item.href} href={item.href} className="flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[var(--muted)] transition hover:text-emerald-600">
-                    <span className="text-lg">{item.icon}</span>
-                    <span className="truncate text-[10px] font-semibold">{item.label}</span>
-                  </Link>
-                ))}
-                <MobileMenuBottomButton />
-              </div>
-            </nav>
           </div>
 
           <MobileStudentMenu firstName={firstName} fullName={profile.full_name || 'Student'} />
