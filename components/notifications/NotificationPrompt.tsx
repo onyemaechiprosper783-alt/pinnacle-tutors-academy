@@ -11,6 +11,10 @@ function urlBase64ToUint8Array(value: string) {
   return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
 }
 
+function dismissPrompt() {
+  localStorage.setItem(DISMISSED_KEY, '1');
+}
+
 export default function NotificationPrompt() {
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -18,7 +22,13 @@ export default function NotificationPrompt() {
   useEffect(() => {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
     if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return;
-    if (Notification.permission !== 'default') return;
+
+    // Once the browser permission is granted or denied, never show this in-app prompt again.
+    if (Notification.permission !== 'default') {
+      dismissPrompt();
+      return;
+    }
+
     if (localStorage.getItem(DISMISSED_KEY) === '1') return;
     setVisible(true);
   }, []);
@@ -27,14 +37,20 @@ export default function NotificationPrompt() {
     setBusy(true);
     try {
       const permission = await Notification.requestPermission();
+
       if (permission !== 'granted') {
-        localStorage.setItem(DISMISSED_KEY, '1');
+        dismissPrompt();
         setVisible(false);
         return;
       }
 
+      // Hide the in-app prompt immediately once the browser has granted permission.
+      dismissPrompt();
+      setVisible(false);
+
       const registration = await navigator.serviceWorker.register('/sw.js');
-      const subscription = await registration.pushManager.subscribe({
+      const existingSubscription = await registration.pushManager.getSubscription();
+      const subscription = existingSubscription ?? await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
       });
@@ -46,10 +62,13 @@ export default function NotificationPrompt() {
       });
 
       if (!response.ok) throw new Error('Subscription failed');
-      localStorage.setItem(DISMISSED_KEY, '1');
-      setVisible(false);
     } catch (error) {
       console.error('Notification setup failed:', error);
+      // If permission was granted, keep the prompt dismissed even if subscription persistence fails.
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        dismissPrompt();
+        setVisible(false);
+      }
     } finally {
       setBusy(false);
     }
@@ -58,17 +77,17 @@ export default function NotificationPrompt() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-md rounded-3xl border border-indigo-200 bg-[var(--card)] p-5 shadow-2xl shadow-indigo-950/20 dark:border-indigo-800 sm:inset-x-auto sm:right-6 sm:left-auto">
+    <div className="fixed inset-x-4 bottom-4 z-[70] mx-auto max-w-md rounded-3xl border border-accent-200 bg-[var(--card)] p-5 shadow-2xl shadow-brand-900/15 dark:border-accent-700 sm:inset-x-auto sm:right-6 sm:left-auto">
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-cyan-500 text-2xl shadow-lg">🔔</div>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-600 to-accent-500 text-2xl shadow-lg">🔔</div>
         <div className="min-w-0 flex-1">
           <h2 className="font-black text-[var(--foreground)]">Stay up to date</h2>
           <p className="mt-1 text-sm leading-5 text-[var(--muted)]">Get important announcements, exam updates and study reminders from Pinnacle Tutors.</p>
-          <div className="mt-4 flex gap-2">
-            <button type="button" onClick={enableNotifications} disabled={busy} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-60">
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={enableNotifications} disabled={busy} className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 disabled:opacity-60">
               {busy ? 'Enabling…' : 'Enable notifications'}
             </button>
-            <button type="button" onClick={() => { localStorage.setItem(DISMISSED_KEY, '1'); setVisible(false); }} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--muted)] transition hover:bg-[var(--background)]">
+            <button type="button" onClick={() => { dismissPrompt(); setVisible(false); }} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--muted)] transition hover:bg-[var(--background)]">
               Not now
             </button>
           </div>
