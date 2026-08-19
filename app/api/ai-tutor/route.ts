@@ -23,16 +23,15 @@ export async function POST(request: Request) {
     if (!message) return NextResponse.json({ error: 'Message is required.' }, { status: 400 });
     if (message.length > 4000) return NextResponse.json({ error: 'Message is too long.' }, { status: 400 });
 
-    // The client may tell us it is currently in an exam/challenge, but the server
-    // also rejects an explicit active-attempt flag so the tutor cannot be used as
-    // an exam-answer tool. The authoritative attempt checks can be added here when
-    // the challenge/attempt service is queried by this route.
     if (looksLikeActiveAttempt(body?.activeAttempt)) {
       return NextResponse.json({ error: 'Nia is unavailable while you are writing an exam or challenge.' }, { status: 403 });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: 'AI Tutor is not configured yet.' }, { status: 503 });
+    if (!apiKey) {
+      console.error('AI Tutor configuration error: OPENAI_API_KEY is missing from this deployment.');
+      return NextResponse.json({ error: 'AI Tutor is not configured yet. Please redeploy after checking the Vercel environment variable.' }, { status: 503 });
+    }
 
     const client = new OpenAI({ apiKey });
     const response = await client.responses.create({
@@ -45,6 +44,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ answer: response.output_text || 'I could not generate an answer right now.' });
   } catch (error) {
     console.error('AI Tutor error:', error);
+
+    if (error instanceof OpenAI.APIError) {
+      console.error('OpenAI API error details:', {
+        status: error.status,
+        code: error.code,
+        type: error.type,
+        requestId: error.requestID,
+      });
+
+      if (error.status === 401) {
+        return NextResponse.json({ error: 'The AI Tutor API key was rejected. Please check the Vercel OPENAI_API_KEY setting.' }, { status: 502 });
+      }
+      if (error.status === 429) {
+        return NextResponse.json({ error: 'The AI Tutor account has reached its API usage or rate limit. Please check your OpenAI API billing/usage.' }, { status: 429 });
+      }
+      if (error.status === 404) {
+        return NextResponse.json({ error: 'The selected AI model is unavailable for this API project.' }, { status: 502 });
+      }
+    }
+
     return NextResponse.json({ error: 'The AI Tutor could not answer right now. Please try again.' }, { status: 500 });
   }
 }
