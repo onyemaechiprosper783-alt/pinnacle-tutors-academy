@@ -27,26 +27,24 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Prepare Android launcher icons from PWA icons
+      - name: Verify bundled Android launcher resources
         run: |
           set -e
-          test -s public/icon-192.png
-          test -s public/icon-512.png
-          mkdir -p android/app/src/main/res/mipmap-mdpi
-          mkdir -p android/app/src/main/res/mipmap-hdpi
-          mkdir -p android/app/src/main/res/mipmap-xhdpi
-          mkdir -p android/app/src/main/res/mipmap-xxhdpi
-          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
-          cp public/icon-192.png android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-hdpi/ic_launcher.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+          for f in \
+            android/app/src/main/res/mipmap-mdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png \
+            android/app/src/main/res/mipmap-hdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png \
+            android/app/src/main/res/mipmap-xhdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png \
+            android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png \
+            android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
+            android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+          do
+            test -s "$f"
+          done
+          echo "Android launcher resources are present."
 
       - name: Check Android project
         run: test -f android/settings.gradle && test -f android/app/src/main/AndroidManifest.xml
