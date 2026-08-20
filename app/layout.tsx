@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import PwaRegister from '../components/PwaRegister';
 import ThemeProvider from '../components/ThemeProvider';
+import AuthRedirect from '../components/AuthRedirect';
 
 export const metadata: Metadata = {
   title: 'Pinnacle Tutors Academy — Your Ultimate JAMB & WAEC Success Partner',
@@ -32,6 +33,7 @@ export default function RootLayout({
       <body className="antialiased">
         <ThemeProvider>
           <PwaRegister />
+          <AuthRedirect />
           {children}
         </ThemeProvider>
       </body>
