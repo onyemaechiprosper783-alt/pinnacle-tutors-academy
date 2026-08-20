@@ -7,6 +7,7 @@ import ThemeProvider from '@/components/ThemeProvider';
 import AnnouncementBell from '@/components/AnnouncementBell';
 import AITutorSideButton from '@/components/ai-tutor/AITutorSideButton';
 import NotificationPrompt from '@/components/notifications/NotificationPrompt';
+import StudentBackButton from '@/components/layout/StudentBackButton';
 
 const NAV_GROUPS = [
   { title: 'Home & Learning', items: [
@@ -45,7 +46,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
           <div className="min-w-0 flex-1">
             <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)]/95 px-4 py-3 shadow-sm backdrop-blur-xl transition-colors duration-200 md:hidden"><Link href="/dashboard" className="flex items-center gap-2.5"><div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5"><img src="/pinnacle-logo.png" alt="Pinnacle Tutors Academy" className="h-full w-full object-contain" /></div><div><p className="text-sm font-black text-[var(--foreground)]">Pinnacle Tutors</p><p className="text-[10px] font-semibold text-brand-600 dark:text-brand-400">Academy</p></div></Link><div className="flex items-center gap-2"><AnnouncementBell /><MobileMenuTrigger /></div></header>
             <div className="hidden h-16 items-center justify-end border-b border-[var(--border)] bg-[var(--card)]/95 px-6 shadow-sm backdrop-blur-xl md:flex"><AnnouncementBell /></div>
-            <main className="min-h-[calc(100vh-64px)] p-4 sm:p-6 md:p-8">{children}</main>
+            <main className="min-h-[calc(100vh-64px)] p-4 sm:p-6 md:p-8"><StudentBackButton />{children}</main>
           </div>
           <MobileStudentMenu firstName={firstName} fullName={profile.full_name || 'Student'} />
           <AITutorSideButton />
