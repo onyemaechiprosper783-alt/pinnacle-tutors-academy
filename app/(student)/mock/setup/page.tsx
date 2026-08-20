@@ -13,12 +13,14 @@ const EXAM_TYPES = [
 
 const YEARS = Array.from({ length: 11 }, (_, index) => 2026 - index);
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180];
+const QUESTION_COUNTS = [10, 20, 30, 40, 50, 60, 90, 120, 180];
 
 export default function MockSetupPage() {
   const router = useRouter();
   const [examType, setExamType] = useState('jamb');
   const [year, setYear] = useState('2026');
   const [durationMinutes, setDurationMinutes] = useState(90);
+  const [questionCount, setQuestionCount] = useState(60);
   const [loading, setLoading] = useState(false);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
@@ -60,7 +62,7 @@ export default function MockSetupPage() {
         body: JSON.stringify({
           mode: 'mock',
           subject_ids: selectedSubjects,
-          question_count: 60,
+          question_count: questionCount,
           duration_seconds: durationMinutes * 60,
           exam_type: examType,
           year: Number(year),
@@ -83,11 +85,12 @@ export default function MockSetupPage() {
   return (
     <main className="min-h-screen bg-[var(--background)] px-3 py-5 sm:px-6 sm:py-8">
       <div className="mx-auto w-full max-w-2xl">
+        <button type="button" onClick={() => router.back()} className="mb-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm font-bold text-[var(--foreground)] shadow-sm hover:bg-[var(--background)]">← Back</button>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm sm:p-8">
           <div className="mb-7">
             <div className="mb-3 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">MOCK EXAM</div>
             <h1 className="text-2xl font-bold text-[var(--foreground)] sm:text-3xl">Set Up Your Mock Exam</h1>
-            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Choose your exam type, year, subjects and the amount of time you want for your mock.</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Choose your exam type, year, number of questions, subjects and the amount of time you want.</p>
           </div>
 
           {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
@@ -104,6 +107,16 @@ export default function MockSetupPage() {
             <select id="year" value={year} onChange={(e) => setYear(e.target.value)} className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm font-medium text-[var(--foreground)] outline-none focus:ring-2 focus:ring-emerald-500">
               {YEARS.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
+          </div>
+
+          <div className="mb-6">
+            <div className="mb-3"><h2 className="font-bold text-[var(--foreground)]">How many questions?</h2><p className="text-xs text-[var(--muted)]">Choose the size of this mock. The selected number is used when the mock starts.</p></div>
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+              {QUESTION_COUNTS.map((count) => {
+                const selected = questionCount === count;
+                return <button key={count} type="button" onClick={() => setQuestionCount(count)} className={`rounded-xl border-2 px-3 py-3 text-sm font-bold transition ${selected ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300' : 'border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-brand-400'}`}>{count}</button>;
+              })}
+            </div>
           </div>
 
           <div className="mb-6">
@@ -127,7 +140,7 @@ export default function MockSetupPage() {
           </div>
 
           <div className="mb-6 rounded-2xl bg-gradient-to-br from-emerald-700 to-teal-800 p-5 text-white shadow-lg shadow-emerald-900/15">
-            <div className="flex items-center justify-between"><span className="text-sm text-white/75">Mock Questions</span><span className="text-2xl font-bold">60</span></div>
+            <div className="flex items-center justify-between"><span className="text-sm text-white/75">Mock Questions</span><span className="text-2xl font-bold">{questionCount}</span></div>
             <div className="mt-3 flex items-center justify-between"><span className="text-sm text-white/75">Your Time Limit</span><span className="font-bold">{durationMinutes} minutes</span></div>
             <div className="mt-3 border-t border-white/15 pt-3 text-xs leading-5 text-white/70">Questions are randomly shuffled. Difficulty is automatically mixed and is not selectable.</div>
           </div>
