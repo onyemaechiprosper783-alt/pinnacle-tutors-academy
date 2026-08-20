@@ -11,80 +11,60 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm install
-      - name: Prepare local WebView bootstrap
-        run: |
-          mkdir -p public
-          test -f public/icon-192.png
-          if [ ! -f public/icon-512.png ]; then cp public/icon-192.png public/icon-512.png; fi
-          cat > public/index.html <<'EOF'
-          <!doctype html>
-          <html lang="en"><head>
-          <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-          <meta name="theme-color" content="#ffffff"><link rel="icon" href="./icon-192.png">
-          <title>Pinnacle Tutors Academy</title>
-          <style>html,body{margin:0;width:100%;height:100%;background:#fff}iframe{width:100%;height:100%;border:0}</style>
-          </head><body>
-          <iframe src="https://pinnacle-tutors-a-git-e8bee1-onyemaechiprosper783-alts-projects.vercel.app/" title="Pinnacle Tutors Academy"></iframe>
-          </body></html>
-          EOF
-          test -s public/index.html
-      - name: Generate Android project
-        run: |
-          rm -rf android
-          npx cap add android
-      - name: Configure Capacitor standalone WebView
-        run: |
-          cat > capacitor.config.ts <<'EOF'
-          import type { CapacitorConfig } from '@capacitor/cli';
-          const config: CapacitorConfig = {
-            appId: 'com.pinnacletutorsacademy.app',
-            appName: 'Pinnacle Tutors Academy',
-            webDir: 'public',
-            server: { androidScheme: 'https' }
-          };
-          export default config;
-          EOF
-          npx cap sync android
-      - name: Configure PWA launcher icons
-        run: |
-          mkdir -p android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi
-          cp public/icon-192.png android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-hdpi/ic_launcher.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
-          cp public/icon-192.png android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
-          cp public/icon-512.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('android/app/src/main/AndroidManifest.xml')
-          s=p.read_text()
-          if 'android.permission.INTERNET' not in s:
-              s=s.replace('</manifest>', '    <uses-permission android:name="android.permission.INTERNET" />\n</manifest>')
-          if 'android:roundIcon=' not in s:
-              s=s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"')
-          p.write_text(s)
-          PY
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: '21'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify PWA icons
+        run: |
+          test -s public/icon-192.png
+          test -s public/icon-512.png
+          node - <<'NODE'
+          const fs = require('fs');
+          for (const p of ['public/icon-192.png','public/icon-512.png']) {
+            const b = fs.readFileSync(p);
+            if (b.readUInt32BE(0) !== 0x89504e47) throw new Error(`${p} is not PNG`);
+            console.log(`${p}: ${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`);
+          }
+          NODE
+
+      - name: Prepare launcher icons
+        run: |
+          mkdir -p android/app/src/main/res/drawable
+          cp public/icon-192.png android/app/src/main/res/drawable/icon_192.png
+          cp public/icon-512.png android/app/src/main/res/drawable/icon_512.png
+
+      - name: Check Android project
+        run: test -f android/settings.gradle && test -f android/app/src/main/AndroidManifest.xml
+
+      - name: Install Gradle
+        run: |
+          curl -fsSL https://services.gradle.org/distributions/gradle-8.11.1-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo /opt/gradle-8.11.1/bin >> "$GITHUB_PATH"
+          gradle --version
+
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
+
       - name: Verify APK
-        run: test -s android/app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          test -s android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
