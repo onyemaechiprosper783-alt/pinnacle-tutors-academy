@@ -29,14 +29,14 @@ jobs:
       - name: Generate Android project
         run: npx cap add android
 
-      - name: Configure Capacitor to load the deployed PWA
+      - name: Configure Capacitor to load the latest deployed PWA
         run: |
           node <<'NODE'
           const fs = require('fs');
           const path = 'capacitor.config.ts';
           let config = fs.readFileSync(path, 'utf8');
           config = config.replace(/server:\s*\{[\s\S]*?\},?\s*/m, '');
-          config = config.replace(/export default\s*\{/, `export default {\n  server: { url: 'https://pinnacle-tutors-academy-ad3i.vercel.app', cleartext: false },`);
+          config = config.replace(/export default\s*\{/, `export default {\n  server: { url: 'https://pinnacle-tutors-academy-ad3i-lft8kengo.vercel.app/practice', cleartext: false },`);
           fs.writeFileSync(path, config);
           NODE
 
