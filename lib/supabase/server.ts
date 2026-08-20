@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 
 // Use inside Server Components, Route Handlers, and Server Actions.
 // Respects RLS — this is the anon-key client scoped to the logged-in user's
@@ -36,10 +37,11 @@ export async function createClient() {
   );
 }
 
-// Fetches the current user's profile (with role) in one call. Returns null
-// if not authenticated. Use this instead of trusting any client-supplied
-// role value.
-export async function getCurrentProfile() {
+// React cache deduplicates this profile lookup when the layout and the
+// current page both ask for the same authenticated profile during one
+// server render. It does not persist the profile across requests, so profile
+// changes remain safe and fresh on subsequent navigations.
+export const getCurrentProfile = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -54,4 +56,4 @@ export async function getCurrentProfile() {
     .single();
 
   return profile ?? null;
-}
+});
