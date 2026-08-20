@@ -4,7 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 type Attempt = { id: string; mode: string; status: string; started_at: string; submitted_at: string | null; score: number | null; correct_count: number | null; total_questions: number | null };
 type AttemptQuestion = { attempt_id: string; question_id: string; is_correct: boolean | null };
-type Question = { id: string; subject_id: string; subjects: { name: string }[] | null };
+type Question = { id: string; subject_id: string | null };
+type Subject = { id: string; name: string };
 type SubjectStat = { correct: number; total: number };
 const COUNTED_MODES = ['practice', 'mock', 'cbt'];
 
@@ -29,16 +30,23 @@ export default async function ProgressPage() {
     const attemptQuestions = (aqData ?? []) as AttemptQuestion[];
     const questionIds = [...new Set(attemptQuestions.map((item) => item.question_id))];
     if (questionIds.length) {
-      const { data: questionData } = await admin.from('questions').select('id, subject_id, subjects(name)').in('id', questionIds);
-      const questionMap = new Map(((questionData ?? []) as Question[]).map((question) => [question.id, question]));
-      subjectStats = new Map<string, SubjectStat>();
+      const { data: questionData } = await admin.from('questions').select('id, subject_id').in('id', questionIds);
+      const questions = (questionData ?? []) as Question[];
+      const subjectIds = [...new Set(questions.map((question) => question.subject_id).filter((id): id is string => Boolean(id)))];
+      const { data: subjectData } = subjectIds.length
+        ? await admin.from('subjects').select('id, name').in('id', subjectIds)
+        : { data: [] as Subject[] };
+      const subjectMap = new Map(((subjectData ?? []) as Subject[]).map((subject) => [subject.id, subject.name]));
+      const questionMap = new Map(questions.map((question) => [question.id, question]));
+
       for (const item of attemptQuestions) {
         const question = questionMap.get(item.question_id);
-        const subject = question?.subjects?.[0]?.name ?? 'Unknown Subject';
-        const stat = subjectStats.get(subject) ?? { correct: 0, total: 0 };
+        const subject = question?.subject_id ? subjectMap.get(question.subject_id) : null;
+        const subjectName = subject?.trim() || 'Unknown Subject';
+        const stat = subjectStats.get(subjectName) ?? { correct: 0, total: 0 };
         stat.total += 1;
         if (item.is_correct === true) stat.correct += 1;
-        subjectStats.set(subject, stat);
+        subjectStats.set(subjectName, stat);
       }
     }
   }
