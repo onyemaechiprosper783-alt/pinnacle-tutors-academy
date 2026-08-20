@@ -1,13 +1,13 @@
-'use client';
-
 import { createBrowserClient } from '@supabase/ssr';
 
 let client: ReturnType<typeof createBrowserClient> | null = null;
 
 /**
- * Browser Supabase client used by the PWA/Android web app.
- * The SSR browser client keeps the auth session in sync with cookies so
- * Next.js middleware can restore the authenticated user after app restarts.
+ * Browser Supabase client for the Android/PWA app.
+ *
+ * Do not override Supabase's storage key here. The SSR browser client uses
+ * its standard cookie/local-session storage integration so the session can
+ * survive app restarts and remain visible to Next.js middleware.
  */
 export function createClient() {
   if (client) return client;
@@ -20,7 +20,6 @@ export function createClient() {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storageKey: 'pinnacle-tutors-auth',
       },
     }
   );
