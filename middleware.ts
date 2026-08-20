@@ -35,8 +35,27 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
+  const isHomeRoute = path === '/';
   const isAdminRoute = path.startsWith(ADMIN_PREFIX);
   const isStudentRoute = STUDENT_PREFIXES.some((p) => path.startsWith(p));
+
+  // Restore an existing authenticated session before rendering the public
+  // homepage. This prevents the installed PWA from opening on the landing
+  // page after the app is closed and reopened when the student is already
+  // signed in.
+  if (user && isHomeRoute) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role === 'admin' || profile?.role === 'super_admin') {
+      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+    }
+
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
 
   if (!user && (isAdminRoute || isStudentRoute)) {
     const redirectUrl = new URL('/login', request.url);
@@ -63,6 +82,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/dashboard/:path*', '/practice/:path*', '/mock/:path*', '/cbt/:path*',
     '/challenge/:path*', '/millionaire/:path*', '/results/:path*',
     '/profile/:path*', '/settings/:path*', '/admin/:path*',
