@@ -21,8 +21,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ att
 
   const admin = createAdminClient();
 
-  // Ownership + in-progress check — a student can only answer within their
-  // own attempt, and only while it's still open.
   const { data: attempt } = await admin
     .from('exam_attempts')
     .select('id, student_id, mode, status')
@@ -48,19 +46,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ att
 
   if (updateError) return NextResponse.json({ error: 'Could not save answer.' }, { status: 500 });
 
-  // Practice mode gets immediate feedback; CBT/mock stay blind until submit
-  // so the exam behaves like a real test.
   if (attempt.mode === 'practice') {
-    const { data: question } = await admin
+    const { data: question, error: questionError } = await admin
       .from('questions')
       .select('correct_answer, explanation')
       .eq('id', parsed.data.question_id)
       .single();
 
+    const correctAnswer = typeof question?.correct_answer === 'string'
+      ? question.correct_answer.trim().toUpperCase()
+      : '';
+
+    if (questionError || !['A', 'B', 'C', 'D'].includes(correctAnswer)) {
+      console.error('Practice feedback lookup failed:', questionError);
+      return NextResponse.json({ error: 'Answer was saved, but the correct answer could not be loaded.' }, { status: 500 });
+    }
+
     return NextResponse.json({
-      is_correct: question?.correct_answer === parsed.data.selected_answer,
-      correct_answer: question?.correct_answer,
-      explanation: question?.explanation ?? null,
+      is_correct: correctAnswer === parsed.data.selected_answer,
+      correct_answer: correctAnswer,
+      explanation: question.explanation ?? null,
     });
   }
 
