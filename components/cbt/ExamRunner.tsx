@@ -175,18 +175,34 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
   const normalTimer = useExamTimer(mode === 'cbt' && challengeDeadline ? null : durationSeconds, () => handleSubmit(true));
 
-  async function selectAnswer(letter: 'A' | 'B' | 'C' | 'D') {
-    if (!currentQuestion || answerLoading || submitting) return;
-    if (mode === 'practice' && feedback[currentQuestion.id]) return;
-    setAnswers((previous) => ({ ...previous, [currentQuestion.id]: letter }));
-    setAnswerLoading(true);
+  const saveAnswer = useCallback(async (questionId: string, letter: 'A' | 'B' | 'C' | 'D') => {
     try {
-      const response = await fetch(`/api/exams/${attemptId}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question_id: currentQuestion.id, selected_answer: letter }) });
+      const response = await fetch(`/api/exams/${attemptId}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question_id: questionId, selected_answer: letter }) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error ?? 'Could not save answer.');
-      if (mode === 'practice' && data?.correct_answer) setFeedback((previous) => ({ ...previous, [currentQuestion.id]: { is_correct: Boolean(data.is_correct), correct_answer: data.correct_answer, explanation: data.explanation ?? null } }));
+      if (mode === 'practice' && data?.correct_answer) setFeedback((previous) => ({ ...previous, [questionId]: { is_correct: Boolean(data.is_correct), correct_answer: data.correct_answer, explanation: data.explanation ?? null } }));
     } catch (error) { console.error('Answer error:', error); }
-    finally { setAnswerLoading(false); }
+  }, [attemptId, mode]);
+
+  async function selectAnswer(letter: 'A' | 'B' | 'C' | 'D') {
+    if (!currentQuestion || submitting) return;
+    if (mode === 'practice' && (answerLoading || feedback[currentQuestion.id])) return;
+    const questionId = currentQuestion.id;
+    setAnswers((previous) => ({ ...previous, [questionId]: letter }));
+
+    if (mode === 'practice') {
+      setAnswerLoading(true);
+      try {
+        await saveAnswer(questionId, letter);
+      } finally {
+        setAnswerLoading(false);
+      }
+      return;
+    }
+
+    // CBT/Mock answers are persisted in the background so navigation never waits
+    // for the answer API to finish processing.
+    void saveAnswer(questionId, letter);
   }
 
   function goNext() {
@@ -224,9 +240,9 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
         {showCalculator && <div className="mb-2 shrink-0 rounded-xl border border-slate-800 bg-slate-900 p-2"><Calculator /></div>}
 
-        <main className="min-h-0 flex-1"><div className="h-full rounded-2xl border border-slate-800 bg-slate-900/95 p-3 shadow-xl sm:p-5"><div className="mb-3 flex items-center justify-between gap-2"><span className="rounded-lg bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{activeSection?.name ?? 'Question'}</span><span className="text-[10px] text-slate-500">{answeredInCurrentSection}/{sectionQuestions.length} answered</span></div><p className="mb-4 text-[15px] font-semibold leading-6 text-white sm:text-lg sm:leading-7">{currentQuestion.question_text}</p><div className="grid gap-2 sm:gap-2.5">{(['A', 'B', 'C', 'D'] as const).map((letter) => { const optionKey = `option_${letter.toLowerCase()}` as 'option_a' | 'option_b' | 'option_c' | 'option_d'; const selected = answers[currentQuestion.id] === letter; const correct = currentFeedback?.correct_answer === letter; const incorrectSelected = currentFeedback && selected && !currentFeedback.is_correct; return <button key={letter} type="button" onClick={() => void selectAnswer(letter)} disabled={answerLoading || submitting || (mode === 'practice' && !!currentFeedback)} className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left text-sm leading-5 transition sm:p-3.5 ${correct ? 'border-green-500 bg-green-500/10 text-green-200' : incorrectSelected ? 'border-red-500 bg-red-500/10 text-red-200' : selected ? 'border-accent-400 bg-accent-400/10 text-accent-100' : 'border-slate-700 bg-slate-950/50 text-slate-200 hover:border-brand-500 hover:bg-brand-950/40'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-black ${selected || correct ? 'border-current' : 'border-slate-600'}`}>{letter}</span><span>{currentQuestion[optionKey]}</span></button>; })}</div>{answerLoading && <p className="mt-2 text-[10px] text-slate-500">Saving answer…</p>}{currentFeedback && <div className={`mt-3 rounded-xl border p-3 text-xs ${currentFeedback.is_correct ? 'border-green-700 bg-green-950/30 text-green-200' : 'border-red-700 bg-red-950/30 text-red-200'}`}><p className="font-black">{currentFeedback.is_correct ? 'Correct ✓' : `Not quite. Correct answer: ${currentFeedback.correct_answer}`}</p>{currentFeedback.explanation && <p className="mt-1.5 leading-5 text-slate-300">{currentFeedback.explanation}</p>}</div>}</div></main>
+        <main className="min-h-0 flex-1"><div className="h-full rounded-2xl border border-slate-800 bg-slate-900/95 p-3 shadow-xl sm:p-5"><div className="mb-3 flex items-center justify-between gap-2"><span className="rounded-lg bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{activeSection?.name ?? 'Question'}</span><span className="text-[10px] text-slate-500">{answeredInCurrentSection}/{sectionQuestions.length} answered</span></div><p className="mb-4 text-[15px] font-semibold leading-6 text-white sm:text-lg sm:leading-7">{currentQuestion.question_text}</p><div className="grid gap-2 sm:gap-2.5">{(['A', 'B', 'C', 'D'] as const).map((letter) => { const optionKey = `option_${letter.toLowerCase()}` as 'option_a' | 'option_b' | 'option_c' | 'option_d'; const selected = answers[currentQuestion.id] === letter; const correct = currentFeedback?.correct_answer === letter; const incorrectSelected = currentFeedback && selected && !currentFeedback.is_correct; return <button key={letter} type="button" onClick={() => void selectAnswer(letter)} disabled={answerLoading || submitting || (mode === 'practice' && !!currentFeedback)} className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left text-sm leading-5 transition sm:p-3.5 ${correct ? 'border-green-500 bg-green-500/10 text-green-200' : incorrectSelected ? 'border-red-500 bg-red-500/10 text-red-200' : selected ? 'border-accent-400 bg-accent-400/10 text-accent-100' : 'border-slate-700 bg-slate-950/50 text-slate-200 hover:border-brand-500 hover:bg-brand-950/40'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-black ${selected || correct ? 'border-current' : 'border-slate-600'}`}>{letter}</span><span>{currentQuestion[optionKey]}</span></button>; })}</div>{answerLoading && <p className="mt-2 text-[10px] text-slate-500">Checking answer…</p>}{currentFeedback && <div className={`mt-3 rounded-xl border p-3 text-xs ${currentFeedback.is_correct ? 'border-green-700 bg-green-950/30 text-green-200' : 'border-red-700 bg-red-950/30 text-red-200'}`}><p className="font-black">{currentFeedback.is_correct ? 'Correct ✓' : `Not quite. Correct answer: ${currentFeedback.correct_answer}`}</p>{currentFeedback.explanation && <p className="mt-1.5 leading-5 text-slate-300">{currentFeedback.explanation}</p>}</div>}</div></main>
 
-        <footer className="sticky bottom-0 z-20 mt-2 shrink-0 border-t border-slate-800 bg-slate-950/95 py-2 backdrop-blur"><div className="flex items-center justify-between gap-2"><button type="button" onClick={goPrevious} disabled={safeCurrentIndex === 0 && (mode !== 'cbt' || activeSectionKey === cbtSections[0]?.key)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-30 sm:px-4">← Previous</button><div className="flex items-center gap-2"><button type="button" onClick={() => void handleSubmit(false)} disabled={submitting} className="rounded-xl bg-accent-500 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg shadow-accent-900/20 transition hover:bg-accent-400 disabled:opacity-60 sm:px-5">{submitting ? 'Submitting…' : 'Submit Exam'}</button>{safeCurrentIndex < sectionQuestions.length - 1 || (mode === 'cbt' && cbtSections.findIndex((section) => section.key === activeSectionKey) < cbtSections.length - 1) ? <button type="button" onClick={goNext} disabled={answerLoading || submitting} className="rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-black text-white transition hover:bg-brand-500 disabled:opacity-60 sm:px-4">Next →</button> : null}</div></div><p className="mt-1 text-center text-[9px] text-slate-600">You can submit with unanswered questions. They will be counted as unanswered, not as wrong.</p></footer>
+        <footer className="sticky bottom-0 z-20 mt-2 shrink-0 border-t border-slate-800 bg-slate-950/95 py-2 backdrop-blur"><div className="flex items-center justify-between gap-2"><button type="button" onClick={goPrevious} disabled={safeCurrentIndex === 0 && (mode !== 'cbt' || activeSectionKey === cbtSections[0]?.key)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-30 sm:px-4">← Previous</button><div className="flex items-center gap-2"><button type="button" onClick={() => void handleSubmit(false)} disabled={submitting} className="rounded-xl bg-accent-500 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg shadow-accent-900/20 transition hover:bg-accent-400 disabled:opacity-60 sm:px-5">{submitting ? 'Submitting…' : 'Submit Exam'}</button>{safeCurrentIndex < sectionQuestions.length - 1 || (mode === 'cbt' && cbtSections.findIndex((section) => section.key === activeSectionKey) < cbtSections.length - 1) ? <button type="button" onClick={goNext} disabled={submitting} className="rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-black text-white transition hover:bg-brand-500 disabled:opacity-60 sm:px-4">Next →</button> : null}</div></div><p className="mt-1 text-center text-[9px] text-slate-600">You can submit with unanswered questions. They will be counted as unanswered, not as wrong.</p></footer>
       </div>
     </div>
   );
