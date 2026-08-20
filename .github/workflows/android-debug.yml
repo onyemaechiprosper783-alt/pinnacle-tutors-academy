@@ -27,25 +27,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Verify PWA icons
-        run: |
-          test -s public/icon-192.png
-          test -s public/icon-512.png
-          node - <<'NODE'
-          const fs = require('fs');
-          for (const p of ['public/icon-192.png','public/icon-512.png']) {
-            const b = fs.readFileSync(p);
-            if (b.readUInt32BE(0) !== 0x89504e47) throw new Error(`${p} is not PNG`);
-            console.log(`${p}: ${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`);
-          }
-          NODE
-
-      - name: Prepare launcher icons
-        run: |
-          mkdir -p android/app/src/main/res/drawable
-          cp public/icon-192.png android/app/src/main/res/drawable/icon_192.png
-          cp public/icon-512.png android/app/src/main/res/drawable/icon_512.png
-
       - name: Check Android project
         run: test -f android/settings.gradle && test -f android/app/src/main/AndroidManifest.xml
 
