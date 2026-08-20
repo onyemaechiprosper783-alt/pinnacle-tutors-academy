@@ -14,7 +14,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm install
@@ -26,17 +26,18 @@ jobs:
           npm run build
           test -d out
           test -f out/index.html
-      - name: Prepare Capacitor assets
-        run: |
-          rm -rf public/android-web
-          mkdir -p public/android-web
-          cp -R out/. public/android-web/
-          test -f public/android-web/index.html
           test -f public/icon-192.png
           test -f public/icon-512.png
+      - name: Prepare Capacitor assets
+        run: |
+          rm -rf public/android-web android
+          mkdir -p public/android-web
+          cp -R out/. public/android-web/
+          cp public/icon-192.png public/android-web/icon-192.png
+          cp public/icon-512.png public/android-web/icon-512.png
+          test -f public/android-web/index.html
       - name: Generate Capacitor Android project
         run: |
-          rm -rf android
           cat > capacitor.config.ts <<'EOF'
           import type { CapacitorConfig } from '@capacitor/cli';
           const config: CapacitorConfig = {
