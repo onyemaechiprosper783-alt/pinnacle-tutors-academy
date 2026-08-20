@@ -11,7 +11,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
-    private static final String START_URL = "https://pinnacle-tutors-academy-ad3i.vercel.app/";
+    private static final String START_URL = "https://pinnacle-tutors-academy-ad3i-lft8kengo.vercel.app/";
     private WebView webView;
 
     @SuppressLint("SetJavaScriptEnabled")
