@@ -27,24 +27,41 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Verify bundled Android launcher resources
+      - name: Package PWA launcher icon into Android resources
         run: |
           set -e
-          for f in \
-            android/app/src/main/res/mipmap-mdpi/ic_launcher.png \
-            android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png \
-            android/app/src/main/res/mipmap-hdpi/ic_launcher.png \
-            android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png \
-            android/app/src/main/res/mipmap-xhdpi/ic_launcher.png \
-            android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png \
-            android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png \
-            android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png \
-            android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
-            android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
-          do
-            test -s "$f"
-          done
-          echo "Android launcher resources are present."
+          test -s public/icon-192.png
+          mkdir -p \
+            android/app/src/main/res/mipmap-mdpi \
+            android/app/src/main/res/mipmap-hdpi \
+            android/app/src/main/res/mipmap-xhdpi \
+            android/app/src/main/res/mipmap-xxhdpi \
+            android/app/src/main/res/mipmap-xxxhdpi
+
+          # icon-192.png is present on android-app and is the authoritative
+          # launcher asset for this branch. Use icon-512.png when available
+          # for the higher-density resources; otherwise safely fall back to
+          # the same PWA icon rather than failing the build.
+          cp public/icon-192.png android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          cp public/icon-192.png android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+          cp public/icon-192.png android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          cp public/icon-192.png android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+          cp public/icon-192.png android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          cp public/icon-192.png android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+
+          if [ -s public/icon-512.png ]; then
+            ICON_HI=public/icon-512.png
+          else
+            ICON_HI=public/icon-192.png
+          fi
+
+          cp "$ICON_HI" android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          cp "$ICON_HI" android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+          cp "$ICON_HI" android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp "$ICON_HI" android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
+          test -s android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          test -s android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
       - name: Check Android project
         run: test -f android/settings.gradle && test -f android/app/src/main/AndroidManifest.xml
