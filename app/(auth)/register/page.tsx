@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/Button';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '', exam_target: 'jamb', access_key: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -28,6 +27,7 @@ export default function RegisterPage() {
     const parsed = registerSchema.safeParse(form);
     if (!parsed.success) { const fieldErrors: Record<string, string> = {}; parsed.error.issues.forEach((issue) => { fieldErrors[issue.path[0] as string] = issue.message; }); setErrors(fieldErrors); return; }
     setErrors({}); setLoading(true);
+    const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({ email: parsed.data.email, password: parsed.data.password, options: { data: { full_name: parsed.data.full_name, phone: parsed.data.phone ?? null, exam_target: parsed.data.exam_target ?? null, pending_access_key: parsed.data.access_key.trim() }, emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard` } });
     if (error) { setLoading(false); setServerError(error.message.includes('already registered') ? 'An account with this email already exists.' : 'Registration failed. Please check your details and try again.'); return; }
     if (!data.session) { setLoading(false); router.push('/login?registered=1'); return; }
