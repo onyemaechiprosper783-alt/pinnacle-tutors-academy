@@ -36,7 +36,7 @@ jobs:
           const path = 'capacitor.config.ts';
           let config = fs.readFileSync(path, 'utf8');
           config = config.replace(/server:\s*\{[\s\S]*?\},?\s*/m, '');
-          config = config.replace(/export default\s*\{/, `export default {\n  server: { url: 'https://pinnacle-tutors-academy-ad3i-lft8kengo.vercel.app/practice', cleartext: false },`);
+          config = config.replace(/export default\s*\{/, `export default {\n  server: { url: 'https://pinnacle-tutors-a-git-e8bee1-onyemaechiprosper783-alts-projects.vercel.app', cleartext: false },`);
           fs.writeFileSync(path, config);
           NODE
 
@@ -45,6 +45,7 @@ jobs:
 
       - name: Apply Pinnacle app icon
         run: |
+          test -f public/icon-192.png
           mkdir -p android/app/src/main/res/drawable
           cp public/icon-192.png android/app/src/main/res/drawable/pinnacle_icon.png
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
