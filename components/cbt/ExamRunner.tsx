@@ -1,3 +1,4 @@
+// Practice mode reveals the correct answer and explanation immediately after an answer is selected.
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
