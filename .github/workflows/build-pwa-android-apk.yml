@@ -9,7 +9,7 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PWA source
+      - name: Checkout complete PWA source
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -21,29 +21,51 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build Next.js PWA
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npm run build
-
-      - name: Prepare Capacitor web assets
+      # The PWA is a Next.js application, so it is not a static Capacitor export.
+      # Package a native Capacitor shell that loads the same production PWA URL
+      # inside the Android WebView instead of redirecting the user to Chrome.
+      - name: Prepare Capacitor entry point
         run: |
           mkdir -p public
-          printf '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pinnacle Tutors Academy</title></head><body><div id="__next"></div><script>window.location.replace("https://pinnacle-tutors-academy-ad3i.vercel.app");</script></body></html>' > public/index.html
+          cat > public/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+              <meta name="theme-color" content="#047857">
+              <title>Pinnacle Tutors Academy</title>
+            </head>
+            <body>
+              <div id="app-loading" style="font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh">
+                Loading Pinnacle Tutors Academy…
+              </div>
+            </body>
+          </html>
+          EOF
 
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Configure Capacitor server for the complete PWA
+      - name: Configure Capacitor to load the complete deployed PWA in-app
         run: |
-          node -e "const fs=require('fs'); const p='capacitor.config.ts'; if(fs.existsSync(p)){let s=fs.readFileSync(p,'utf8'); s=s.replace(/server:\s*\{[\s\S]*?\},?\s*/m,''); fs.writeFileSync(p,s)}"
-          npx cap copy android
+          cat > capacitor.config.ts <<'EOF'
+          import type { CapacitorConfig } from '@capacitor/cli';
 
-      - name: Sync Capacitor
-        run: npx cap sync android
+          const config: CapacitorConfig = {
+            appId: 'com.pinnacletutors.academy',
+            appName: 'Pinnacle Tutors Academy',
+            webDir: 'public',
+            server: {
+              url: 'https://pinnacle-tutors-academy-ad3i.vercel.app',
+              cleartext: false,
+            },
+          };
+
+          export default config;
+          EOF
+          npx cap copy android
+          npx cap sync android
 
       - name: Setup Java
         uses: actions/setup-java@v4
