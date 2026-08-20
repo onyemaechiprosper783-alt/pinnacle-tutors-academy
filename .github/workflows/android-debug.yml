@@ -25,9 +25,7 @@ jobs:
         run: |
           mkdir -p public
           test -f public/icon-192.png
-          if [ ! -f public/icon-512.png ]; then
-            cp public/icon-192.png public/icon-512.png
-          fi
+          if [ ! -f public/icon-512.png ]; then cp public/icon-192.png public/icon-512.png; fi
           cat > public/index.html <<'EOF'
           <!doctype html>
           <html lang="en">
@@ -38,12 +36,11 @@ jobs:
             <link rel="icon" href="./icon-192.png">
             <link rel="apple-touch-icon" href="./icon-512.png">
             <title>Pinnacle Tutors Academy</title>
-            <style>html,body{margin:0;width:100%;height:100%;background:#fff}#boot{width:100%;height:100%;border:0}</style>
+            <style>html,body{margin:0;width:100%;height:100%;background:#fff}</style>
           </head>
           <body>
-            <iframe id="boot" title="Pinnacle Tutors Academy"></iframe>
             <script>
-              document.getElementById('boot').src='https://pinnacle-tutors-a-git-e8bee1-onyemaechiprosper783-alts-projects.vercel.app/';
+              window.location.replace('https://pinnacle-tutors-a-git-e8bee1-onyemaechiprosper783-alts-projects.vercel.app/');
             </script>
           </body>
           </html>
@@ -71,11 +68,7 @@ jobs:
 
       - name: Configure PWA launcher icons
         run: |
-          mkdir -p android/app/src/main/res/mipmap-mdpi
-          mkdir -p android/app/src/main/res/mipmap-hdpi
-          mkdir -p android/app/src/main/res/mipmap-xhdpi
-          mkdir -p android/app/src/main/res/mipmap-xxhdpi
-          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          mkdir -p android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi
           cp public/icon-192.png android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           cp public/icon-192.png android/app/src/main/res/mipmap-hdpi/ic_launcher.png
           cp public/icon-192.png android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
