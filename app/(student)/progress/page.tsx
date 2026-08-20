@@ -30,6 +30,9 @@ export default async function ProgressPage() {
     const attemptQuestions = (aqData ?? []) as AttemptQuestion[];
     const questionIds = [...new Set(attemptQuestions.map((item) => item.question_id))];
     if (questionIds.length) {
+      // Resolve subjects by their IDs in a separate query instead of relying on
+      // Supabase's inferred relationship shape. This keeps production builds
+      // from collapsing valid subjects into "Unknown Subject".
       const { data: questionData } = await admin.from('questions').select('id, subject_id').in('id', questionIds);
       const questions = (questionData ?? []) as Question[];
       const subjectIds = [...new Set(questions.map((question) => question.subject_id).filter((id): id is string => Boolean(id)))];
