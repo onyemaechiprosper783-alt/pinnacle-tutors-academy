@@ -11,16 +11,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
       - name: Install dependencies
         run: npm install
-
       - name: Prepare local WebView bootstrap
         run: |
           mkdir -p public
@@ -28,30 +25,20 @@ jobs:
           if [ ! -f public/icon-512.png ]; then cp public/icon-192.png public/icon-512.png; fi
           cat > public/index.html <<'EOF'
           <!doctype html>
-          <html lang="en">
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-            <meta name="theme-color" content="#ffffff">
-            <link rel="icon" href="./icon-192.png">
-            <link rel="apple-touch-icon" href="./icon-512.png">
-            <title>Pinnacle Tutors Academy</title>
-            <style>html,body{margin:0;width:100%;height:100%;background:#fff}</style>
-          </head>
-          <body>
-            <script>
-              window.location.replace('https://pinnacle-tutors-a-git-e8bee1-onyemaechiprosper783-alts-projects.vercel.app/');
-            </script>
-          </body>
-          </html>
+          <html lang="en"><head>
+          <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+          <meta name="theme-color" content="#ffffff"><link rel="icon" href="./icon-192.png">
+          <title>Pinnacle Tutors Academy</title>
+          <style>html,body{margin:0;width:100%;height:100%;background:#fff}iframe{width:100%;height:100%;border:0}</style>
+          </head><body>
+          <iframe src="https://pinnacle-tutors-a-git-e8bee1-onyemaechiprosper783-alts-projects.vercel.app/" title="Pinnacle Tutors Academy"></iframe>
+          </body></html>
           EOF
           test -s public/index.html
-
       - name: Generate Android project
         run: |
           rm -rf android
           npx cap add android
-
       - name: Configure Capacitor standalone WebView
         run: |
           cat > capacitor.config.ts <<'EOF'
@@ -65,7 +52,6 @@ jobs:
           export default config;
           EOF
           npx cap sync android
-
       - name: Configure PWA launcher icons
         run: |
           mkdir -p android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi
@@ -89,20 +75,16 @@ jobs:
               s=s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"')
           p.write_text(s)
           PY
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
-
       - name: Verify APK
         run: test -s android/app/build/outputs/apk/debug/app-debug.apk
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
