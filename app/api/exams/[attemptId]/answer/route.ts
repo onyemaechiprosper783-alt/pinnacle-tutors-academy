@@ -9,7 +9,6 @@ const answerSchema = z.object({
   time_spent_seconds: z.number().min(0).optional(),
 });
 
-// POST /api/exams/[attemptId]/answer
 export async function POST(request: Request, { params }: { params: Promise<{ attemptId: string }> }) {
   const caller = await getCurrentProfile();
   if (!caller) return NextResponse.json({ error: 'Not authorized.' }, { status: 401 });
@@ -46,6 +45,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ att
     return NextResponse.json({ error: 'Question is not part of this attempt.' }, { status: 404 });
   }
 
+  // For practice, load the answer key before saving the student's answer.
+  // This guarantees that the feedback response is ready in the same request
+  // and avoids relying on a read-after-write race in the database.
+  let practiceFeedback: {
+    is_correct: boolean;
+    correct_answer: 'A' | 'B' | 'C' | 'D';
+    explanation: string | null;
+  } | null = null;
+
+  if (attempt.mode === 'practice') {
+    const { data: question, error: questionError } = await admin
+      .from('questions')
+      .select('correct_answer, explanation')
+      .eq('id', parsed.data.question_id)
+      .maybeSingle();
+
+    const correctAnswer = typeof question?.correct_answer === 'string'
+      ? question.correct_answer.trim().toUpperCase()
+      : '';
+
+    if (questionError || !['A', 'B', 'C', 'D'].includes(correctAnswer)) {
+      console.error('Practice feedback lookup failed:', questionError);
+      return NextResponse.json({
+        error: 'The correct answer could not be loaded. Your answer was not submitted.',
+      }, { status: 500 });
+    }
+
+    practiceFeedback = {
+      is_correct: correctAnswer === parsed.data.selected_answer,
+      correct_answer: correctAnswer as 'A' | 'B' | 'C' | 'D',
+      explanation: question?.explanation ?? null,
+    };
+  }
+
   const { error: updateError } = await admin
     .from('attempt_questions')
     .update({
@@ -58,42 +91,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ att
 
   if (updateError) return NextResponse.json({ error: 'Could not save answer.' }, { status: 500 });
 
-  if (attempt.mode === 'practice') {
-    // Read the answer key immediately after saving. A short retry protects
-    // practice feedback from transient Supabase reads without affecting mocks/CBTs.
-    let question: { correct_answer: string | null; explanation: string | null } | null = null;
-    let questionError: unknown = null;
-
-    for (let attemptNumber = 0; attemptNumber < 2; attemptNumber += 1) {
-      const result = await admin
-        .from('questions')
-        .select('correct_answer, explanation')
-        .eq('id', parsed.data.question_id)
-        .maybeSingle();
-
-      question = result.data;
-      questionError = result.error;
-
-      if (question?.correct_answer) break;
-      if (attemptNumber === 0) await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-
-    const correctAnswer = typeof question?.correct_answer === 'string'
-      ? question.correct_answer.trim().toUpperCase()
-      : '';
-
-    if (questionError || !['A', 'B', 'C', 'D'].includes(correctAnswer)) {
-      console.error('Practice feedback lookup failed:', questionError);
-      return NextResponse.json({
-        error: 'Answer was saved, but the correct answer could not be loaded. Please try the question again.',
-        answer_saved: true,
-      }, { status: 500 });
-    }
-
+  if (practiceFeedback) {
     return NextResponse.json({
-      is_correct: correctAnswer === parsed.data.selected_answer,
-      correct_answer: correctAnswer,
-      explanation: question.explanation ?? null,
+      ...practiceFeedback,
       answer_saved: true,
     });
   }
