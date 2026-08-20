@@ -32,10 +32,15 @@ jobs:
       - name: Prepare Capacitor web assets
         run: |
           mkdir -p public
-          printf '<!doctype html><html><head><meta http-equiv="refresh" content="0;url=https://pinnacle-tutors-academy-ad3i.vercel.app"></head><body></body></html>' > public/index.html
+          printf '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pinnacle Tutors Academy</title></head><body><div id="__next"></div><script>window.location.replace("https://pinnacle-tutors-academy-ad3i.vercel.app");</script></body></html>' > public/index.html
 
       - name: Add Android platform
         run: npx cap add android
+
+      - name: Configure Capacitor server for the complete PWA
+        run: |
+          node -e "const fs=require('fs'); const p='capacitor.config.ts'; if(fs.existsSync(p)){let s=fs.readFileSync(p,'utf8'); s=s.replace(/server:\s*\{[\s\S]*?\},?\s*/m,''); fs.writeFileSync(p,s)}"
+          npx cap copy android
 
       - name: Sync Capacitor
         run: npx cap sync android
