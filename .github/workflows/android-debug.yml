@@ -21,8 +21,25 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Prepare Capacitor bootstrap page
+        run: |
+          mkdir -p public
+          printf '%s\n' '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' > public/index.html
+
       - name: Generate Android project
         run: npx cap add android
+
+      - name: Configure Capacitor to load the deployed PWA
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'capacitor.config.ts';
+          let config = fs.readFileSync(path, 'utf8');
+          config = config.replace(/server:\s*\{[\s\S]*?\},?\s*/m, '');
+          config = config.replace(/export default\s*\{/, `export default {\n  server: { url: 'https://pinnacle-tutors-academy-ad3i.vercel.app', cleartext: false },`);
+          fs.writeFileSync(path, config);
+          NODE
+          rm -f public/index.html
 
       - name: Sync Capacitor
         run: npx cap sync android
@@ -31,8 +48,6 @@ jobs:
         run: |
           mkdir -p android/app/src/main/res/drawable
           cp public/icon-192.png android/app/src/main/res/drawable/pinnacle_icon.png
-          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             mkdir -p "android/app/src/main/res/mipmap-$density"
             cp public/icon-192.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
