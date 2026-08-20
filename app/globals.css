@@ -2,103 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #f7f8fa;
-  --foreground: #0b1728;
-  --primary: #1f3a5f;
-  --primary-dark: #10243d;
-  --secondary: #b88916;
-  --success: #15803d;
-  --warning: #b45309;
-  --danger: #b91c1c;
-  --card: #ffffff;
-  --border: #d7dee8;
-  --muted: #64748b;
-  --surface: #eef2f6;
-  --surface-strong: #e2e8f0;
-  --ring: rgba(31, 58, 95, 0.22);
-}
-
-html.dark {
-  --background: #07111f;
-  --foreground: #f8fafc;
-  --primary: #6f86a4;
-  --primary-dark: #9fb1c8;
-  --secondary: #e9bc3f;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #fb7185;
-  --card: #0e1b2d;
-  --border: #263852;
-  --muted: #94a3b8;
-  --surface: #14243a;
-  --surface-strong: #1b2d46;
-  --ring: rgba(233, 188, 63, 0.28);
-}
-
-* { box-sizing: border-box; }
-html, body { max-width: 100vw; overflow-x: hidden; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; background: var(--background); }
-body {
-  color: var(--foreground);
-  background:
-    radial-gradient(circle at 0% 0%, rgba(31, 58, 95, 0.07), transparent 28rem),
-    radial-gradient(circle at 100% 10%, rgba(184, 137, 22, 0.045), transparent 24rem),
-    var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  transition: background-color 0.25s ease, color 0.25s ease;
-}
-html.dark body {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(111, 134, 164, 0.10), transparent 28rem),
-    radial-gradient(circle at 100% 10%, rgba(233, 188, 63, 0.055), transparent 24rem),
-    var(--background);
-}
-button, input, textarea, select { font: inherit; }
-button { cursor: pointer; }
-a { color: inherit; text-decoration: none; }
-::selection { background: rgba(184, 137, 22, 0.22); }
-html.dark ::selection { background: rgba(233, 188, 63, 0.24); }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #9fb1c8; border-radius: 999px; }
-html.dark ::-webkit-scrollbar-thumb { background: #405a7a; }
-::-webkit-scrollbar-thumb:hover { background: #b88916; }
-html.dark ::-webkit-scrollbar-thumb:hover { background: #e9bc3f; }
-
-.theme-background { background-color: var(--background); color: var(--foreground); }
-.theme-card { background-color: var(--card); color: var(--foreground); border-color: var(--border); box-shadow: 0 8px 30px rgba(15, 23, 42, 0.055); }
-html.dark .theme-card { box-shadow: 0 12px 35px rgba(0, 0, 0, 0.22); }
-.theme-border { border-color: var(--border); }
-.theme-muted { color: var(--muted); }
-.theme-primary { color: var(--primary); }
-.theme-surface { background-color: var(--surface); color: var(--foreground); }
-.theme-ring:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
-
-@layer components {
-  .pta-card {
-    @apply rounded-2xl border transition-all duration-200;
-    border-color: var(--border);
-    background: var(--card);
-    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.045);
-  }
-  .pta-card:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(15, 23, 42, 0.075); }
-  .pta-glass { @apply border backdrop-blur-xl; border-color: color-mix(in srgb, var(--border) 78%, transparent); background: color-mix(in srgb, var(--card) 82%, transparent); }
-  .pta-focus { @apply outline-none; }
-  .pta-focus:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
-}
-html.dark .pta-card { box-shadow: 0 10px 32px rgba(0, 0, 0, 0.20); }
-html.dark .pta-card:hover { box-shadow: 0 14px 38px rgba(0, 0, 0, 0.28); }
-
-input, textarea, select { color: var(--foreground); background-color: var(--card); border-color: var(--border); }
-input::placeholder, textarea::placeholder { color: var(--muted); }
-
-.testimonial-rail { display: flex; gap: 1rem; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x mandatory; padding: 0.25rem 0.25rem 0.75rem; scrollbar-width: thin; }
-.testimonial-rail > * { flex: 0 0 min(88vw, 360px); scroll-snap-align: start; }
-
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
-}
+:root { --background:#f7f8fa; --foreground:#0b1728; --primary:#1f3a5f; --primary-dark:#10243d; --secondary:#b88916; --success:#15803d; --warning:#b45309; --danger:#b91c1c; --card:#ffffff; --border:#d7dee8; --muted:#64748b; --surface:#eef2f6; --surface-strong:#e2e8f0; --ring:rgba(31,58,95,.22); }
+html.dark { --background:#07111f; --foreground:#f8fafc; --primary:#6f86a4; --primary-dark:#9fb1c8; --secondary:#e9bc3f; --success:#4ade80; --warning:#fbbf24; --danger:#fb7185; --card:#0e1b2d; --border:#263852; --muted:#94a3b8; --surface:#14243a; --surface-strong:#1b2d46; --ring:rgba(233,188,63,.28); }
+*{box-sizing:border-box} html,body{max-width:100vw;overflow-x:hidden;margin:0;padding:0} html{scroll-behavior:smooth;background:var(--background)} body{color:var(--foreground);background:radial-gradient(circle at 0 0,rgba(31,58,95,.07),transparent 28rem),radial-gradient(circle at 100% 10%,rgba(184,137,22,.045),transparent 24rem),var(--background);font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;transition:background-color .25s ease,color .25s ease} html.dark body{background:radial-gradient(circle at 0 0,rgba(111,134,164,.10),transparent 28rem),radial-gradient(circle at 100% 10%,rgba(233,188,63,.055),transparent 24rem),var(--background)} button,input,textarea,select{font:inherit} button{cursor:pointer} a{color:inherit;text-decoration:none} ::selection{background:rgba(184,137,22,.22)} html.dark ::selection{background:rgba(233,188,63,.24)} ::-webkit-scrollbar{width:8px;height:8px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:#9fb1c8;border-radius:999px} html.dark ::-webkit-scrollbar-thumb{background:#405a7a} ::-webkit-scrollbar-thumb:hover{background:#b88916} html.dark ::-webkit-scrollbar-thumb:hover{background:#e9bc3f}
+.theme-background{background-color:var(--background);color:var(--foreground)} .theme-card{background-color:var(--card);color:var(--foreground);border-color:var(--border);box-shadow:0 8px 30px rgba(15,23,42,.055)} html.dark .theme-card{box-shadow:0 12px 35px rgba(0,0,0,.22)} .theme-border{border-color:var(--border)} .theme-muted{color:var(--muted)} .theme-primary{color:var(--primary)} .theme-surface{background-color:var(--surface);color:var(--foreground)} .theme-ring:focus-visible{outline:3px solid var(--ring);outline-offset:2px}
+@layer components { .pta-card{@apply rounded-2xl border transition-all duration-200;border-color:var(--border);background:var(--card);box-shadow:0 6px 24px rgba(15,23,42,.045)} .pta-card:hover{transform:translateY(-1px);box-shadow:0 12px 32px rgba(15,23,42,.075)} .pta-glass{@apply border backdrop-blur-xl;border-color:color-mix(in srgb,var(--border) 78%,transparent);background:color-mix(in srgb,var(--card) 82%,transparent)} .pta-focus{@apply outline-none} .pta-focus:focus-visible{outline:3px solid var(--ring);outline-offset:2px} }
+html.dark .pta-card{box-shadow:0 10px 32px rgba(0,0,0,.20)} html.dark .pta-card:hover{box-shadow:0 14px 38px rgba(0,0,0,.28)} input,textarea,select{color:var(--foreground);background-color:var(--card);border-color:var(--border)} input::placeholder,textarea::placeholder{color:var(--muted)}
+.testimonial-rail{display:flex;gap:1rem;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x mandatory;padding:.25rem .25rem .75rem;scrollbar-width:thin}.testimonial-rail>*{flex:0 0 min(88vw,360px);scroll-snap-align:start}
+@keyframes ptaSplash_{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}} @keyframes ptaLogo_{from{opacity:0;transform:scale(.72) rotate(-6deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
