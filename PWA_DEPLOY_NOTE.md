@@ -1,0 +1,1 @@
+The pwa branch contains the latest PWA work. Keep the production deployment synchronized with the pwa branch when promoting the PWA to the public production domain.
