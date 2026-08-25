@@ -11,15 +11,28 @@ interface AttemptQuestionRow {
   question: Record<string, unknown> & { id: string };
 }
 
+interface AttemptData {
+  attempt: {
+    status: string;
+    duration_seconds: number | null;
+    started_at: string;
+  };
+  questions: AttemptQuestionRow[];
+  challenge_global_deadline?: string | null;
+}
+
 export function AttemptRunnerLoader({ attemptId, mode }: { attemptId: string; mode: 'mock' | 'cbt' }) {
   const router = useRouter();
   const [state, setState] = useState<{ questions: QuestionPublic[]; durationSeconds: number | null } | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch(`/api/exams/${attemptId}`)
-      .then(async (res) => {
-        const data = await res.json();
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch(`/api/exams/${attemptId}`, { cache: 'no-store' });
+        const data = (await res.json()) as AttemptData & { error?: string };
         if (!res.ok) throw new Error(data.error ?? 'Could not load exam.');
 
         if (data.attempt.status !== 'in_progress') {
@@ -27,11 +40,11 @@ export function AttemptRunnerLoader({ attemptId, mode }: { attemptId: string; mo
           return;
         }
 
-        const questions: QuestionPublic[] = (data.questions as AttemptQuestionRow[])
+        const questions: QuestionPublic[] = data.questions
           .sort((a, b) => a.position - b.position)
           .map((aq) => aq.question as unknown as QuestionPublic);
 
-        const remainingSeconds = data.attempt.duration_seconds
+        const attemptRemaining = data.attempt.duration_seconds
           ? Math.max(
               0,
               data.attempt.duration_seconds -
@@ -39,10 +52,45 @@ export function AttemptRunnerLoader({ attemptId, mode }: { attemptId: string; mo
             )
           : null;
 
-        setState({ questions, durationSeconds: remainingSeconds });
-      })
-      .catch((e) => setError(e.message));
-  }, [attemptId, router]);
+        const globalDeadline = mode === 'cbt' ? data.challenge_global_deadline : null;
+        const globalRemaining = globalDeadline
+          ? Math.max(0, Math.ceil((new Date(globalDeadline).getTime() - Date.now()) / 1000))
+          : null;
+
+        const remainingSeconds =
+          globalRemaining === null
+            ? attemptRemaining
+            : attemptRemaining === null
+              ? globalRemaining
+              : Math.min(attemptRemaining, globalRemaining);
+
+        if (remainingSeconds !== null && remainingSeconds <= 0 && mode === 'cbt') {
+          const submit = await fetch(`/api/exams/${attemptId}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_submitted: true }),
+          });
+
+          if (!submit.ok) {
+            const submitData = await submit.json().catch(() => null);
+            throw new Error(submitData?.error ?? 'The challenge has ended and could not be submitted automatically.');
+          }
+
+          if (!cancelled) router.replace(`/results/${attemptId}`);
+          return;
+        }
+
+        if (!cancelled) setState({ questions, durationSeconds: remainingSeconds });
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load exam.');
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptId, mode, router]);
 
   if (error) return <div className="rounded-xl bg-amber-50 p-6 text-center text-amber-800">{error}</div>;
   if (!state) return <p className="p-8 text-center text-slate-400">Loading exam...</p>;

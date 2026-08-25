@@ -1,10 +1,9 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useExamTimer } from '@/lib/hooks/useExamTimer';
 import { Calculator } from '@/components/calculator/Calculator';
-import { Button } from '@/components/ui/Button';
 import type { QuestionPublic } from '@/types/database';
 
 interface ExamRunnerProps {
@@ -20,179 +19,223 @@ interface Feedback {
   explanation: string | null;
 }
 
+type QuestionWithSubject = QuestionPublic & {
+  subject_id?: string;
+  subject_name?: string;
+  subject?: string;
+  subjects?: { name?: string | null } | null;
+  question?: QuestionWithSubject;
+};
+
+interface CbtSection {
+  key: string;
+  name: string;
+  count: number;
+  questions: QuestionWithSubject[];
+}
+
+interface AttemptResponse {
+  attempt?: {
+    config?: { challenge?: { global_deadline?: string | null } | null } | null;
+  };
+}
+
+const ENGLISH_SUBJECT_ID = 'e5705892-de46-425c-af42-e37a3eddc93d';
+const LEKKI_HEADMASTER_SUBJECT_ID = '3bca9d00-18fd-4064-b3ac-41da6e7eefa6';
+const BOOKMARK_STORAGE_KEY = 'pinnacle-bookmarked-questions';
+
 export function ExamRunner({ attemptId, mode, questions, durationSeconds }: ExamRunnerProps) {
   const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({});
   const [feedback, setFeedback] = useState<Record<string, Feedback>>({});
+  const [answerLoading, setAnswerLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [activeSectionKey, setActiveSectionKey] = useState('english');
+  const [challengeDeadline, setChallengeDeadline] = useState<string | null>(null);
+  const [challengeSecondsLeft, setChallengeSecondsLeft] = useState<number | null>(null);
+  const [challengeLoading, setChallengeLoading] = useState(mode === 'cbt');
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const handleSubmitRef = useRef<(() => void) | null>(null);
 
-  const currentQuestion = questions[currentIndex];
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(BOOKMARK_STORAGE_KEY) ?? '[]') as Array<{ id: string }>;
+      setBookmarkedIds(new Set(saved.map((item) => item.id)));
+    } catch {
+      setBookmarkedIds(new Set());
+    }
+  }, []);
+
+  const normalizedQuestions = useMemo<QuestionWithSubject[]>(() => questions.map((raw) => {
+    const item = raw as QuestionWithSubject;
+    const nested = item.question;
+    if (!nested) return item;
+    return { ...nested, ...item, subject_id: nested.subject_id ?? item.subject_id, subject_name: nested.subject_name ?? item.subject_name, subject: nested.subject ?? item.subject, subjects: nested.subjects ?? item.subjects };
+  }), [questions]);
+
+  const getSubjectName = useCallback((question: QuestionWithSubject) => String(question.subjects?.name ?? question.subject_name ?? question.subject ?? '').trim(), []);
+
+  const cbtSections = useMemo<CbtSection[]>(() => {
+    if (mode !== 'cbt') return [];
+    const english = normalizedQuestions.filter((q) => {
+      const name = getSubjectName(q).toLowerCase();
+      return q.subject_id === ENGLISH_SUBJECT_ID || q.subject_id === LEKKI_HEADMASTER_SUBJECT_ID || name.includes('english') || name.includes('lekki headmaster');
+    });
+
+    const otherGroups = new Map<string, QuestionWithSubject[]>();
+    for (const question of normalizedQuestions) {
+      const name = getSubjectName(question).toLowerCase();
+      const isEnglish = question.subject_id === ENGLISH_SUBJECT_ID || question.subject_id === LEKKI_HEADMASTER_SUBJECT_ID || name.includes('english') || name.includes('lekki headmaster');
+      if (isEnglish) continue;
+      const key = question.subject_id ?? (getSubjectName(question) || 'unknown');
+      otherGroups.set(key, [...(otherGroups.get(key) ?? []), question]);
+    }
+
+    const sections: CbtSection[] = [];
+    if (english.length) sections.push({ key: 'english', name: 'English Language', count: 60, questions: english.slice(0, 60) });
+    Array.from(otherGroups.entries()).slice(0, 3).forEach(([id, group], index) => sections.push({ key: `subject_${index + 1}_${id}`, name: getSubjectName(group[0]) || `Subject ${index + 1}`, count: 40, questions: group.slice(0, 40) }));
+
+    if (sections.length === 4 && sections.every((section) => section.questions.length === section.count)) return sections;
+    if (normalizedQuestions.length >= 180) return [
+      { key: 'english', name: 'English Language', count: 60, questions: normalizedQuestions.slice(0, 60) },
+      { key: 'subject_1', name: getSubjectName(normalizedQuestions[60]) || 'Subject 1', count: 40, questions: normalizedQuestions.slice(60, 100) },
+      { key: 'subject_2', name: getSubjectName(normalizedQuestions[100]) || 'Subject 2', count: 40, questions: normalizedQuestions.slice(100, 140) },
+      { key: 'subject_3', name: getSubjectName(normalizedQuestions[140]) || 'Subject 3', count: 40, questions: normalizedQuestions.slice(140, 180) },
+    ];
+    return sections.length ? sections : [{ key: 'all', name: 'Questions', count: normalizedQuestions.length, questions: normalizedQuestions }];
+  }, [mode, normalizedQuestions, getSubjectName]);
+
+  const activeSection = mode === 'cbt' ? cbtSections.find((section) => section.key === activeSectionKey) ?? cbtSections[0] : null;
+  const sectionQuestions = mode === 'cbt' ? activeSection?.questions ?? [] : normalizedQuestions;
+  const safeCurrentIndex = Math.min(currentIndex, Math.max(sectionQuestions.length - 1, 0));
+  const currentQuestion = sectionQuestions[safeCurrentIndex];
   const answeredCount = Object.keys(answers).length;
+  const unansweredCount = Math.max(0, questions.length - answeredCount);
+  const answeredInCurrentSection = sectionQuestions.filter((question) => !!answers[question.id]).length;
+  const currentFeedback = currentQuestion ? feedback[currentQuestion.id] : undefined;
+
+  const toggleBookmark = useCallback((question: QuestionWithSubject) => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(BOOKMARK_STORAGE_KEY) ?? '[]') as QuestionWithSubject[];
+      const exists = saved.some((item) => item.id === question.id);
+      const next = exists ? saved.filter((item) => item.id !== question.id) : [...saved, question];
+      localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(next));
+      setBookmarkedIds(new Set(next.map((item) => item.id)));
+    } catch (error) { console.error('Bookmark error:', error); }
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'cbt') { setChallengeLoading(false); return; }
+    let cancelled = false;
+    async function loadAttempt() {
+      try {
+        const response = await fetch(`/api/exams/${attemptId}`, { cache: 'no-store' });
+        const data = (await response.json().catch(() => null)) as AttemptResponse | null;
+        const deadline = data?.attempt?.config?.challenge?.global_deadline ?? null;
+        if (!cancelled && response.ok && deadline) setChallengeDeadline(deadline);
+      } catch (error) { console.error('Could not load challenge timing:', error); }
+      finally { if (!cancelled) setChallengeLoading(false); }
+    }
+    void loadAttempt();
+    return () => { cancelled = true; };
+  }, [attemptId, mode]);
 
   const handleSubmit = useCallback(async (autoSubmitted = false) => {
+    if (submitting) return;
+    if (!autoSubmitted && mode !== 'practice' && typeof window !== 'undefined') {
+      const message = unansweredCount === 0 ? 'Submit this exam now?' : `You still have ${unansweredCount} unanswered question${unansweredCount === 1 ? '' : 's'}. Submit anyway?`;
+      if (!window.confirm(message)) return;
+    }
     setSubmitting(true);
-    await fetch(`/api/exams/${attemptId}/submit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auto_submitted: autoSubmitted }),
-    });
-    router.push(`/results/${attemptId}`);
-  }, [attemptId, router]);
+    try {
+      const response = await fetch(`/api/exams/${attemptId}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_submitted: autoSubmitted }) });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? 'Could not submit exam.');
+      router.push(`/results/${attemptId}`);
+    } catch (error) { console.error('Submit error:', error); setSubmitting(false); }
+  }, [attemptId, mode, router, submitting, unansweredCount]);
 
-  const timer = useExamTimer(durationSeconds, () => handleSubmit(true));
+  useEffect(() => { handleSubmitRef.current = () => { void handleSubmit(true); }; }, [handleSubmit]);
+
+  useEffect(() => {
+    if (mode !== 'cbt' || !challengeDeadline) return;
+    let stopped = false;
+    const updateClock = () => {
+      if (stopped) return;
+      const remaining = Math.max(0, Math.ceil((new Date(challengeDeadline).getTime() - Date.now()) / 1000));
+      setChallengeSecondsLeft(remaining);
+      if (remaining <= 0) { stopped = true; handleSubmitRef.current?.(); }
+    };
+    updateClock();
+    const interval = window.setInterval(updateClock, 500);
+    return () => { stopped = true; window.clearInterval(interval); };
+  }, [challengeDeadline, mode]);
+
+  const normalTimer = useExamTimer(mode === 'cbt' && challengeDeadline ? null : durationSeconds, () => handleSubmit(true));
 
   async function selectAnswer(letter: 'A' | 'B' | 'C' | 'D') {
-    setAnswers((prev) => ({ ...prev, [currentQuestion.id]: letter }));
+    if (!currentQuestion || answerLoading || submitting) return;
+    if (mode === 'practice' && feedback[currentQuestion.id]) return;
+    setAnswers((previous) => ({ ...previous, [currentQuestion.id]: letter }));
+    setAnswerLoading(true);
+    try {
+      const response = await fetch(`/api/exams/${attemptId}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question_id: currentQuestion.id, selected_answer: letter }) });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? 'Could not save answer.');
+      if (mode === 'practice' && data?.correct_answer) setFeedback((previous) => ({ ...previous, [currentQuestion.id]: { is_correct: Boolean(data.is_correct), correct_answer: data.correct_answer, explanation: data.explanation ?? null } }));
+    } catch (error) { console.error('Answer error:', error); }
+    finally { setAnswerLoading(false); }
+  }
 
-    const res = await fetch(`/api/exams/${attemptId}/answer`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question_id: currentQuestion.id, selected_answer: letter }),
-    });
-
-    if (mode === 'practice') {
-      const data = await res.json();
-      if (data.correct_answer) {
-        setFeedback((prev) => ({ ...prev, [currentQuestion.id]: data }));
-      }
+  function goNext() {
+    if (safeCurrentIndex < sectionQuestions.length - 1) { setCurrentIndex((index) => index + 1); return; }
+    if (mode === 'cbt') {
+      const index = cbtSections.findIndex((section) => section.key === activeSectionKey);
+      const next = cbtSections[index + 1];
+      if (next) { setActiveSectionKey(next.key); setCurrentIndex(0); }
     }
   }
 
-  const currentFeedback = feedback[currentQuestion?.id];
-  const isMathOrScience = useMemo(() => true, []); // calculator always available; harmless for non-numeric subjects
+  function goPrevious() {
+    if (safeCurrentIndex > 0) { setCurrentIndex((index) => index - 1); return; }
+    if (mode === 'cbt') {
+      const index = cbtSections.findIndex((section) => section.key === activeSectionKey);
+      const previous = cbtSections[index - 1];
+      if (previous) { setActiveSectionKey(previous.key); setCurrentIndex(Math.max(previous.questions.length - 1, 0)); }
+    }
+  }
 
-  if (!currentQuestion) return <p className="p-8 text-center text-slate-400">No questions loaded.</p>;
+  if (!currentQuestion) return <div className="mx-auto max-w-xl p-6"><div className="pta-card p-6 text-center"><h2 className="text-lg font-bold text-[var(--foreground)]">No questions loaded.</h2><p className="mt-2 text-sm text-[var(--muted)]">The exam could not load its questions.</p><button type="button" onClick={() => router.back()} className="mt-5 rounded-xl bg-brand-700 px-5 py-3 font-semibold text-white">Go Back</button></div></div>;
+
+  const displayTimer = mode === 'cbt' && challengeDeadline ? formatSeconds(challengeSecondsLeft ?? 0) : normalTimer.display;
+  const timerIsLow = mode === 'cbt' && challengeDeadline ? (challengeSecondsLeft ?? 0) <= 300 : normalTimer.isLow;
+  const isBookmarked = bookmarkedIds.has(currentQuestion.id);
 
   return (
-    <div className="mx-auto max-w-3xl pb-24">
-      {/* Header: progress + timer */}
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-500">
-          Question {currentIndex + 1} of {questions.length}
-        </span>
-        {durationSeconds ? (
-          <span className={`rounded-full px-3 py-1 text-sm font-bold ${timer.isLow ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-            ⏱ {timer.display}
-          </span>
-        ) : (
-          <span className="text-sm text-slate-400">Untimed</span>
-        )}
+    <div className="min-h-[100svh] bg-slate-950 text-white">
+      <div className="mx-auto flex min-h-[100svh] w-full max-w-6xl flex-col px-3 py-2 sm:px-5 sm:py-3">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-800 pb-2"><div className="min-w-0"><div className="truncate text-xs font-bold uppercase tracking-wider text-accent-300 sm:text-sm">{mode === 'cbt' ? 'JAMB CBT' : mode === 'mock' ? 'Mock Examination' : 'Practice'}</div><div className="mt-0.5 text-[11px] text-slate-400">{answeredCount}/{questions.length} answered</div></div>{mode === 'cbt' && challengeLoading ? <div className="rounded-full bg-slate-800 px-3 py-1.5 text-xs text-slate-300">Checking time…</div> : <div className={`rounded-full px-3 py-1.5 text-xs font-black sm:px-4 sm:text-sm ${timerIsLow ? 'bg-red-600 text-white' : 'bg-accent-500 text-slate-950'}`}>⏱ {displayTimer}</div>}</header>
+
+        {mode === 'cbt' && cbtSections.length > 0 && <nav className="my-2 flex shrink-0 gap-1 overflow-x-auto rounded-xl bg-slate-900 p-1" aria-label="CBT subjects">{cbtSections.map((section) => { const active = activeSection?.key === section.key; const answered = section.questions.filter((q) => !!answers[q.id]).length; return <button key={section.key} type="button" onClick={() => { setActiveSectionKey(section.key); setCurrentIndex(0); }} className={`whitespace-nowrap rounded-lg px-3 py-2 text-[11px] font-bold transition sm:px-4 sm:text-xs ${active ? 'bg-brand-600 text-white shadow' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>{section.name}<span className="ml-1 opacity-70">{answered}/{section.count}</span></button>; })}</nav>}
+
+        <div className="my-2 flex shrink-0 items-center justify-between gap-2"><div className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-bold sm:px-4">Question {safeCurrentIndex + 1}/{sectionQuestions.length}</div><div className="flex items-center gap-1.5"><button type="button" onClick={() => toggleBookmark(currentQuestion)} className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold sm:px-3 sm:text-xs ${isBookmarked ? 'border-accent-400 bg-accent-400/10 text-accent-300' : 'border-slate-700 text-slate-300 hover:bg-slate-900'}`}>{isBookmarked ? '🔖 Saved' : '🔖 Save'}</button><button type="button" onClick={() => setShowCalculator((value) => !value)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-slate-900 sm:px-3 sm:text-xs">🧮 Calc</button></div></div>
+
+        {showCalculator && <div className="mb-2 shrink-0 rounded-xl border border-slate-800 bg-slate-900 p-2"><Calculator /></div>}
+
+        <main className="min-h-0 flex-1"><div className="h-full rounded-2xl border border-slate-800 bg-slate-900/95 p-3 shadow-xl sm:p-5"><div className="mb-3 flex items-center justify-between gap-2"><span className="rounded-lg bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{activeSection?.name ?? 'Question'}</span><span className="text-[10px] text-slate-500">{answeredInCurrentSection}/{sectionQuestions.length} answered</span></div><p className="mb-4 text-[15px] font-semibold leading-6 text-white sm:text-lg sm:leading-7">{currentQuestion.question_text}</p><div className="grid gap-2 sm:gap-2.5">{(['A', 'B', 'C', 'D'] as const).map((letter) => { const optionKey = `option_${letter.toLowerCase()}` as 'option_a' | 'option_b' | 'option_c' | 'option_d'; const selected = answers[currentQuestion.id] === letter; const correct = currentFeedback?.correct_answer === letter; const incorrectSelected = currentFeedback && selected && !currentFeedback.is_correct; return <button key={letter} type="button" onClick={() => void selectAnswer(letter)} disabled={answerLoading || submitting || (mode === 'practice' && !!currentFeedback)} className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left text-sm leading-5 transition sm:p-3.5 ${correct ? 'border-green-500 bg-green-500/10 text-green-200' : incorrectSelected ? 'border-red-500 bg-red-500/10 text-red-200' : selected ? 'border-accent-400 bg-accent-400/10 text-accent-100' : 'border-slate-700 bg-slate-950/50 text-slate-200 hover:border-brand-500 hover:bg-brand-950/40'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-black ${selected || correct ? 'border-current' : 'border-slate-600'}`}>{letter}</span><span>{currentQuestion[optionKey]}</span></button>; })}</div>{answerLoading && <p className="mt-2 text-[10px] text-slate-500">Saving answer…</p>}{currentFeedback && <div className={`mt-3 rounded-xl border p-3 text-xs ${currentFeedback.is_correct ? 'border-green-700 bg-green-950/30 text-green-200' : 'border-red-700 bg-red-950/30 text-red-200'}`}><p className="font-black">{currentFeedback.is_correct ? 'Correct ✓' : `Not quite. Correct answer: ${currentFeedback.correct_answer}`}</p>{currentFeedback.explanation && <p className="mt-1.5 leading-5 text-slate-300">{currentFeedback.explanation}</p>}</div>}</div></main>
+
+        <footer className="sticky bottom-0 z-20 mt-2 shrink-0 border-t border-slate-800 bg-slate-950/95 py-2 backdrop-blur"><div className="flex items-center justify-between gap-2"><button type="button" onClick={goPrevious} disabled={safeCurrentIndex === 0 && (mode !== 'cbt' || activeSectionKey === cbtSections[0]?.key)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-30 sm:px-4">← Previous</button><div className="flex items-center gap-2"><button type="button" onClick={() => void handleSubmit(false)} disabled={submitting} className="rounded-xl bg-accent-500 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg shadow-accent-900/20 transition hover:bg-accent-400 disabled:opacity-60 sm:px-5">{submitting ? 'Submitting…' : 'Submit Exam'}</button>{safeCurrentIndex < sectionQuestions.length - 1 || (mode === 'cbt' && cbtSections.findIndex((section) => section.key === activeSectionKey) < cbtSections.length - 1) ? <button type="button" onClick={goNext} disabled={answerLoading || submitting} className="rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-black text-white transition hover:bg-brand-500 disabled:opacity-60 sm:px-4">Next →</button> : null}</div></div><p className="mt-1 text-center text-[9px] text-slate-600">You can submit with unanswered questions. They will be counted as unanswered, not as wrong.</p></footer>
       </div>
-
-      {/* Question navigation grid */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {questions.map((q, i) => {
-          const isAnswered = !!answers[q.id];
-          const isCurrent = i === currentIndex;
-          return (
-            <button
-              type="button"
-              key={q.id}
-              onClick={() => setCurrentIndex(i)}
-              className={`h-8 w-8 shrink-0 rounded-md text-xs font-semibold ${
-                isCurrent ? 'bg-emerald-600 text-white' :
-                isAnswered ? 'bg-emerald-100 text-emerald-700' :
-                'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {i + 1}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Question card */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="mb-5 text-lg font-medium leading-relaxed text-slate-900">
-          {currentQuestion.question_text}
-        </p>
-
-        <div className="space-y-2.5">
-          {(['A', 'B', 'C', 'D'] as const).map((letter) => {
-            const optionText = currentQuestion[`option_${letter.toLowerCase()}` as 'option_a'];
-            const isSelected = answers[currentQuestion.id] === letter;
-            const showResult = mode === 'practice' && currentFeedback;
-            const isCorrectOption = showResult && currentFeedback.correct_answer === letter;
-            const isWrongSelected = showResult && isSelected && !currentFeedback.is_correct;
-
-            return (
-              <button
-                type="button"
-                key={letter}
-                onClick={() => !currentFeedback && selectAnswer(letter)}
-                disabled={mode === 'practice' && !!currentFeedback}
-                className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left text-base transition-colors ${
-                  isCorrectOption ? 'border-emerald-500 bg-emerald-50' :
-                  isWrongSelected ? 'border-red-400 bg-red-50' :
-                  isSelected ? 'border-emerald-500 bg-emerald-50' :
-                  'border-slate-200 bg-white active:bg-slate-50'
-                }`}
-              >
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                  isSelected || isCorrectOption ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {letter}
-                </span>
-                <span>{optionText}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {mode === 'practice' && currentFeedback && (
-          <div className={`mt-4 rounded-xl p-4 text-sm ${currentFeedback.is_correct ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}>
-            <p className="font-semibold">{currentFeedback.is_correct ? 'Correct!' : `Incorrect — the answer is ${currentFeedback.correct_answer}`}</p>
-            {currentFeedback.explanation && <p className="mt-1 text-slate-600">{currentFeedback.explanation}</p>}
-          </div>
-        )}
-      </div>
-
-      {/* Nav buttons */}
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <Button type="button" variant="secondary" disabled={currentIndex === 0} onClick={() => setCurrentIndex((i) => i - 1)}>
-          Previous
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => setShowCalculator((s) => !s)}>
-          {showCalculator ? 'Hide' : 'Calculator'}
-        </Button>
-        {currentIndex < questions.length - 1 ? (
-          <Button type="button" onClick={() => setCurrentIndex((i) => i + 1)}>Next</Button>
-        ) : (
-          <Button type="button" onClick={() => setShowConfirm(true)}>Submit</Button>
-        )}
-      </div>
-
-      {showCalculator && (
-        <div className="fixed bottom-20 right-4 z-20 md:bottom-4">
-          <Calculator onClose={() => setShowCalculator(false)} />
-        </div>
-      )}
-
-      {/* Bottom submit bar (always accessible, not just on last question) */}
-      <div className="fixed bottom-0 left-0 right-0 flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 md:static md:mt-4 md:border-0 md:bg-transparent md:px-0 md:py-0">
-        <span className="text-sm text-slate-500">{answeredCount} of {questions.length} answered</span>
-        <Button type="button" variant="danger" onClick={() => setShowConfirm(true)}>End & Submit</Button>
-      </div>
-
-      {showConfirm && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6">
-            <h3 className="mb-2 text-lg font-bold text-slate-900">Submit your exam?</h3>
-            <p className="mb-5 text-sm text-slate-500">
-              You&apos;ve answered {answeredCount} of {questions.length} questions.
-              {answeredCount < questions.length && ' Unanswered questions will be marked incorrect.'}
-              {' '}This can&apos;t be undone.
-            </p>
-            <div className="flex gap-3">
-              <Button type="button" variant="secondary" fullWidth onClick={() => setShowConfirm(false)}>Keep working</Button>
-              <Button type="button" variant="danger" fullWidth loading={submitting} onClick={() => handleSubmit(false)}>Submit</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
+}
+
+function formatSeconds(total: number) {
+  const safe = Math.max(0, total);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}` : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }

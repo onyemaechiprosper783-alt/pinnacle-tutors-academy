@@ -16,10 +16,12 @@ export function Button({
   className,
   children,
   disabled,
+  type = 'button',
   ...props
 }: ButtonProps) {
   return (
     <button
+      type={type}
       className={clsx(
         'inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-base font-semibold transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-60',

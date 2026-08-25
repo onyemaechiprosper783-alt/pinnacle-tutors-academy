@@ -6,6 +6,13 @@ export const registerSchema = z.object({
   phone: z.string().min(10, 'Enter a valid phone number').max(15).optional(),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   exam_target: z.enum(['jamb', 'waec', 'both']).optional(),
+
+  // Students must provide either a Product Key or an Activation Key.
+  access_key: z
+    .string()
+    .trim()
+    .min(1, 'Enter your Product Key or Activation Key')
+    .max(100, 'Invalid access key'),
 });
 
 export const loginSchema = z.object({
@@ -15,7 +22,7 @@ export const loginSchema = z.object({
 
 export const forgotPasswordSchema = z.object({
   email: z.string().email('Enter a valid email'),
-});
+  });
 
 export const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
