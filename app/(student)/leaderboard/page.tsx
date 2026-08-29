@@ -15,20 +15,8 @@ type Entry = {
   score: number | null;
   time_used_seconds: number | null;
   created_at: string;
+  category: string;
 };
-
-type Attempt = {
-  id: string;
-  config: unknown;
-};
-
-function getRoundId(config: unknown): string | null {
-  if (!config || typeof config !== 'object') return null;
-  const value = config as { round_id?: unknown; challenge?: { round_id?: unknown } | null };
-  if (typeof value.round_id === 'string') return value.round_id;
-  if (typeof value.challenge?.round_id === 'string') return value.challenge.round_id;
-  return null;
-}
 
 export default async function LeaderboardPage() {
   const caller = await getCurrentProfile();
@@ -59,10 +47,14 @@ export default async function LeaderboardPage() {
     );
   }
 
+  // The results release API stores challenge entries with the ROUND ID as
+  // their category. The previous page incorrectly searched for the literal
+  // value "utme_challenge", so released entries were always filtered out.
+  const releasedRoundIds = releasedRounds.map((round) => round.id);
   const { data: entries, error: entriesError } = await admin
     .from('leaderboard_entries')
-    .select('attempt_id, student_id, score, time_used_seconds, created_at')
-    .eq('category', 'utme_challenge')
+    .select('attempt_id, student_id, score, time_used_seconds, created_at, category')
+    .in('category', releasedRoundIds)
     .order('score', { ascending: false, nullsFirst: false })
     .order('time_used_seconds', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: true });
@@ -72,31 +64,23 @@ export default async function LeaderboardPage() {
   }
 
   const allEntries = (entries ?? []) as Entry[];
-  const attemptIds = [...new Set(allEntries.map((entry) => entry.attempt_id).filter(Boolean))];
-  const { data: attempts } = attemptIds.length
-    ? await admin.from('exam_attempts').select('id, config').in('id', attemptIds)
-    : { data: [] as Attempt[] };
-
-  const attemptRound = new Map<string, string>();
-  for (const attempt of (attempts ?? []) as Attempt[]) {
-    const roundId = getRoundId(attempt.config);
-    if (roundId) attemptRound.set(attempt.id, roundId);
-  }
-
-  const studentIds = [...new Set(allEntries.map((entry) => entry.student_id))];
+  const studentIds = [...new Set(allEntries.map((entry) => entry.student_id).filter(Boolean))];
   const { data: profiles } = studentIds.length
     ? await admin.from('profiles').select('id, full_name, display_name').in('id', studentIds)
     : { data: [] as { id: string; full_name: string | null; display_name: string | null }[] };
   const names = new Map((profiles ?? []).map((profile) => [profile.id, profile.display_name || profile.full_name || 'Student']));
 
   const releasedWithEntries = releasedRounds.map((round) => {
-    const roundEntries = allEntries.filter((entry) => attemptRound.get(entry.attempt_id) === round.id);
+    const roundEntries = allEntries.filter((entry) => entry.category === round.id);
     let previousScore: number | null = null;
+    let previousTime: number | null = null;
     let previousRank = 0;
     const leaderboard = roundEntries.map((entry, index) => {
       const score = Number(entry.score ?? 0);
-      const rank = previousScore !== null && score === previousScore ? previousRank : index + 1;
+      const time = Number(entry.time_used_seconds ?? Number.MAX_SAFE_INTEGER);
+      const rank = previousScore !== null && score === previousScore && time === previousTime ? previousRank : index + 1;
       previousScore = score;
+      previousTime = time;
       previousRank = rank;
       return { ...entry, score, rank, student_name: names.get(entry.student_id) ?? 'Student' };
     });
