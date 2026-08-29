@@ -22,13 +22,10 @@ export default function NotificationPrompt() {
   useEffect(() => {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
     if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return;
-
-    // Once the browser permission is granted or denied, never show this in-app prompt again.
     if (Notification.permission !== 'default') {
       dismissPrompt();
       return;
     }
-
     if (localStorage.getItem(DISMISSED_KEY) === '1') return;
     setVisible(true);
   }, []);
@@ -37,18 +34,16 @@ export default function NotificationPrompt() {
     setBusy(true);
     try {
       const permission = await Notification.requestPermission();
-
       if (permission !== 'granted') {
         dismissPrompt();
         setVisible(false);
         return;
       }
 
-      // Hide the in-app prompt immediately once the browser has granted permission.
-      dismissPrompt();
-      setVisible(false);
-
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      // The PWA registers /sw.js independently. Always wait for the active
+      // service worker before touching PushManager to avoid the race condition
+      // where registration has started but the worker is not ready yet.
+      const registration = await navigator.serviceWorker.ready;
       const existingSubscription = await registration.pushManager.getSubscription();
       const subscription = existingSubscription ?? await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -61,14 +56,15 @@ export default function NotificationPrompt() {
         body: JSON.stringify(subscription.toJSON()),
       });
 
-      if (!response.ok) throw new Error('Subscription failed');
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Subscription failed');
+      }
+
+      dismissPrompt();
+      setVisible(false);
     } catch (error) {
       console.error('Notification setup failed:', error);
-      // If permission was granted, keep the prompt dismissed even if subscription persistence fails.
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        dismissPrompt();
-        setVisible(false);
-      }
     } finally {
       setBusy(false);
     }
