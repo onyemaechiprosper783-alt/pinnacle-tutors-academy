@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 const DISMISSED_KEY = 'pinnacle-notification-prompt-dismissed';
+const READY_TIMEOUT_MS = 10000;
 
 function urlBase64ToUint8Array(value: string) {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
@@ -13,6 +14,13 @@ function urlBase64ToUint8Array(value: string) {
 
 function dismissPrompt() {
   localStorage.setItem(DISMISSED_KEY, '1');
+}
+
+function waitForReady(timeoutMs: number): Promise<ServiceWorkerRegistration> {
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<ServiceWorkerRegistration>((_, reject) => setTimeout(() => reject(new Error('Service worker did not become ready in time.')), timeoutMs)),
+  ]);
 }
 
 export default function NotificationPrompt() {
@@ -33,7 +41,6 @@ export default function NotificationPrompt() {
   async function enableNotifications() {
     if (busy) return;
     setBusy(true);
-
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
@@ -42,17 +49,21 @@ export default function NotificationPrompt() {
         return;
       }
 
-      // Register the worker and then wait for the browser to report it as ready.
-      await navigator.serviceWorker.register('/sw.js');
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await navigator.serviceWorker.register(`/sw.js?v=${Date.now()}`, { updateViaCache: 'none' });
+      let readyRegistration = registration;
 
-      if (!registration.pushManager) {
-        throw new Error('Push notifications are not supported by this service worker.');
+      // If register() returned an active worker, use it immediately. Otherwise wait briefly.
+      if (!readyRegistration.active) {
+        readyRegistration = await waitForReady(READY_TIMEOUT_MS);
       }
 
-      let subscription = await registration.pushManager.getSubscription();
+      if (!readyRegistration.active) {
+        throw new Error('Service worker is not active yet. Please try again.');
+      }
+
+      let subscription = await readyRegistration.pushManager.getSubscription();
       if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
+        subscription = await readyRegistration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
         });
@@ -73,7 +84,6 @@ export default function NotificationPrompt() {
       setVisible(false);
     } catch (error) {
       console.error('Notification setup failed:', error);
-      // Do not leave the button permanently stuck if setup fails.
       setVisible(true);
     } finally {
       setBusy(false);
