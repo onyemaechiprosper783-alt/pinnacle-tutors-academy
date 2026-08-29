@@ -22,38 +22,41 @@ export default function NotificationPrompt() {
   useEffect(() => {
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
     if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return;
-
-    // Once the browser permission is granted or denied, never show this in-app prompt again.
     if (Notification.permission !== 'default') {
       dismissPrompt();
       return;
     }
-
     if (localStorage.getItem(DISMISSED_KEY) === '1') return;
     setVisible(true);
   }, []);
 
   async function enableNotifications() {
+    if (busy) return;
     setBusy(true);
+
     try {
       const permission = await Notification.requestPermission();
-
       if (permission !== 'granted') {
         dismissPrompt();
         setVisible(false);
         return;
       }
 
-      // Hide the in-app prompt immediately once the browser has granted permission.
-      dismissPrompt();
-      setVisible(false);
+      // Register the worker and then wait for the browser to report it as ready.
+      await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.ready;
 
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      const existingSubscription = await registration.pushManager.getSubscription();
-      const subscription = existingSubscription ?? await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
-      });
+      if (!registration.pushManager) {
+        throw new Error('Push notifications are not supported by this service worker.');
+      }
+
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
+        });
+      }
 
       const response = await fetch('/api/push/subscribe', {
         method: 'POST',
@@ -61,14 +64,17 @@ export default function NotificationPrompt() {
         body: JSON.stringify(subscription.toJSON()),
       });
 
-      if (!response.ok) throw new Error('Subscription failed');
+      if (!response.ok) {
+        const details = await response.text().catch(() => '');
+        throw new Error(`Subscription persistence failed (${response.status})${details ? `: ${details}` : ''}`);
+      }
+
+      dismissPrompt();
+      setVisible(false);
     } catch (error) {
       console.error('Notification setup failed:', error);
-      // If permission was granted, keep the prompt dismissed even if subscription persistence fails.
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        dismissPrompt();
-        setVisible(false);
-      }
+      // Do not leave the button permanently stuck if setup fails.
+      setVisible(true);
     } finally {
       setBusy(false);
     }
@@ -87,7 +93,7 @@ export default function NotificationPrompt() {
             <button type="button" onClick={enableNotifications} disabled={busy} className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 disabled:opacity-60">
               {busy ? 'Enabling…' : 'Enable notifications'}
             </button>
-            <button type="button" onClick={() => { dismissPrompt(); setVisible(false); }} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--muted)] transition hover:bg-[var(--background)]">
+            <button type="button" onClick={() => { dismissPrompt(); setVisible(false); }} disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--muted)] transition hover:bg-[var(--background)] disabled:opacity-60">
               Not now
             </button>
           </div>
