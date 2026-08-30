@@ -5,21 +5,30 @@ import { useEffect } from 'react';
 export default function PwaRegister() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
-
     if (process.env.NODE_ENV !== 'production') return;
+
+    let cancelled = false;
 
     const registerSW = async () => {
       try {
-        await navigator.serviceWorker.register('/sw.js');
+        const registration = await navigator.serviceWorker.register('/sw.js', {
+          updateViaCache: 'none',
+        });
+
+        if (!cancelled) {
+          console.info('Pinnacle service worker ready:', registration.scope);
+        }
       } catch (error) {
-        console.error('Service worker registration failed:', error);
+        if (!cancelled) {
+          console.error('Service worker registration failed:', error);
+        }
       }
     };
 
-    const timer = window.setTimeout(registerSW, 1000);
+    void registerSW();
 
     return () => {
-      window.clearTimeout(timer);
+      cancelled = true;
     };
   }, []);
 
