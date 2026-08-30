@@ -17,11 +17,20 @@ export async function POST(request: Request) {
 
   const { endpoint, keys } = parsed.data;
   const { error } = await supabase.from('push_subscriptions').upsert(
-    { user_id: user.id, endpoint, p256dh: keys.p256dh, auth: keys.auth, updated_at: new Date().toISOString() },
+    {
+      user_id: user.id,
+      endpoint,
+      p256dh: keys.p256dh,
+      auth: keys.auth,
+    },
     { onConflict: 'endpoint' }
   );
 
-  if (error) return NextResponse.json({ error: 'Could not save notification subscription.' }, { status: 500 });
+  if (error) {
+    console.error('Push subscription persistence error:', error);
+    return NextResponse.json({ error: 'Could not save notification subscription.' }, { status: 500 });
+  }
+
   return NextResponse.json({ ok: true });
 }
 
