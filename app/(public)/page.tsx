@@ -9,6 +9,14 @@ const FEATURES = [
   { icon: '🔥', title: 'UTME Challenge', desc: 'Challenge yourself, improve your score and compete with other ambitious students.' },
 ];
 
+const TOP_SCORERS = [
+  { rank: 1, name: 'Owoeye Daniella Jesudunsin', score: 372, course: 'Medicine & Surgery', school: 'UNILAG', state: 'Ekiti', photo: 'https://punchng.com/wp-content/uploads/2026/05/12164913/Screenshot-2026-05-12-164901.png' },
+  { rank: 2, name: 'Enwere Kingsley Ikenna', score: 370, course: 'Computer Science', school: 'Nile University', state: 'Imo', photo: 'https://punchng.com/wp-content/uploads/2026/05/26193117/WhatsApp-Image-2026-05-26-at-19.16.34.webp' },
+  { rank: 3, name: 'Bamisile Ayomide Emmanuel', score: 369, course: 'Software Engineering', school: 'FUTA', state: 'Ondo' },
+  { rank: 4, name: 'Olabiyisi Olanrewaju Oluwatimileyin', score: 368, course: 'Mechatronics Engineering', school: 'Pan-Atlantic University', state: 'Oyo' },
+  { rank: 4, name: 'Victor-Onyeka Daniel Ifeanyi', score: 368, course: 'Electrical/Electronics Engineering', school: 'UNIPORT', state: 'Imo' },
+];
+
 const STATS = [
   { value: 'JAMB', label: 'Exam Preparation' },
   { value: 'WAEC', label: 'Exam Preparation' },
@@ -19,98 +27,39 @@ const STATS = [
 export default function HomePage() {
   return (
     <main className="min-h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+      <div className="pta-intro" aria-hidden="true">
+        <div className="pta-intro-orb" />
+        <div className="pta-intro-logo-wrap"><img src="/icon-192.png" alt="" className="pta-intro-logo" /></div>
+        <p className="pta-intro-welcome">Welcome to Pinnacle Tutors Academy</p>
+        <p className="pta-intro-motto">Learn. Practice. Compete. Conquer.</p>
+      </div>
+
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 bg-gradient-to-br from-brand-50 via-[var(--background)] to-accent-50 dark:from-brand-950/60 dark:via-[var(--background)] dark:to-accent-950/30" />
         <div className="absolute -left-24 top-20 -z-10 h-72 w-72 rounded-full bg-brand-400/15 blur-3xl" />
         <div className="absolute -right-24 top-40 -z-10 h-80 w-80 rounded-full bg-accent-400/15 blur-3xl" />
-
         <div className="mx-auto max-w-7xl px-5 pb-16 pt-12 sm:px-6 md:pb-24 md:pt-20">
           <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
-            <div>
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-[var(--card)]/90 px-4 py-2 text-sm font-semibold text-brand-700 shadow-sm backdrop-blur dark:border-brand-700 dark:text-brand-200">
-                <span className="h-2 w-2 rounded-full bg-accent-500" />
-                Built for Nigerian students
-              </div>
-
-              <h1 className="max-w-3xl text-4xl font-black leading-[1.08] tracking-tight text-slate-950 dark:text-white sm:text-5xl md:text-6xl">
-                Prepare smarter.
-                <span className="block bg-gradient-to-r from-brand-600 via-brand-500 to-accent-500 bg-clip-text text-transparent">
-                  Score higher.
-                </span>
-                Reach your pinnacle.
-              </h1>
-
-              <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-lg">
-                Pinnacle Tutors Academy gives you everything you need to prepare for JAMB and WAEC — realistic CBT practice, mock exams, instant feedback and a smarter way to learn.
-              </p>
-
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                <Link href="/register" className="rounded-2xl bg-brand-700 px-7 py-4 text-center font-bold text-white shadow-lg shadow-brand-900/20 transition hover:-translate-y-0.5 hover:bg-brand-800">
-                  Start Practicing →
-                </Link>
-                <Link href="/jamb" className="rounded-2xl border border-brand-200 bg-[var(--card)] px-7 py-4 text-center font-bold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-accent-400 hover:text-brand-700 dark:border-brand-700 dark:text-slate-100">
-                  Explore JAMB
-                </Link>
-              </div>
-
-              <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-500 dark:text-slate-400">
-                <span>✓ Practice questions</span><span>✓ Mock examinations</span><span>✓ CBT simulation</span>
-              </div>
+            <div className="pta-reveal">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-[var(--card)]/90 px-4 py-2 text-sm font-semibold text-brand-700 shadow-sm backdrop-blur dark:border-brand-700 dark:text-brand-200"><span className="h-2 w-2 animate-pulse rounded-full bg-accent-500" /> Built for Nigerian students</div>
+              <h1 className="max-w-3xl text-4xl font-black leading-[1.04] tracking-tight text-slate-950 dark:text-white sm:text-5xl md:text-6xl">Prepare smarter.<span className="block bg-gradient-to-r from-brand-600 via-brand-500 to-accent-500 bg-clip-text text-transparent">Score higher.</span>Reach your pinnacle.</h1>
+              <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-lg">Pinnacle Tutors Academy gives you everything you need to prepare for JAMB and WAEC — realistic CBT practice, mock exams, instant feedback and a smarter way to learn.</p>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row"><Link href="/register" className="pta-shine rounded-2xl bg-brand-700 px-7 py-4 text-center font-bold text-white shadow-lg shadow-brand-900/20 transition hover:-translate-y-1 hover:bg-brand-800">Start Practicing →</Link><Link href="/jamb" className="rounded-2xl border border-brand-200 bg-[var(--card)] px-7 py-4 text-center font-bold text-slate-800 shadow-sm transition hover:-translate-y-1 hover:border-accent-400 hover:text-brand-700 dark:border-brand-700 dark:text-slate-100">Explore JAMB</Link></div>
+              <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-500 dark:text-slate-400"><span>✓ Practice questions</span><span>✓ Mock examinations</span><span>✓ CBT simulation</span></div>
             </div>
-
-            <div className="relative mx-auto w-full max-w-md lg:max-w-lg">
-              <div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-r from-brand-500/15 to-accent-500/15 blur-2xl" />
-              <div className="pta-glass relative rounded-[2rem] p-5 shadow-2xl">
-                <div className="rounded-3xl bg-gradient-to-br from-brand-800 via-brand-700 to-accent-600 p-6 text-white shadow-xl">
-                  <div className="flex items-center justify-between">
-                    <div><p className="text-sm font-medium text-brand-100">Your learning journey</p><h2 className="mt-1 text-2xl font-black">Keep climbing 🚀</h2></div>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-2xl">🎓</div>
-                  </div>
-                  <div className="mt-7 rounded-2xl bg-white/10 p-4">
-                    <div className="mb-3 flex items-center justify-between text-sm"><span className="text-brand-100">Practice progress</span><span className="font-bold">82%</span></div>
-                    <div className="h-3 overflow-hidden rounded-full bg-white/20"><div className="h-full w-[82%] rounded-full bg-accent-300" /></div>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-brand-100">Questions</p><p className="mt-1 text-2xl font-black">1,250+</p></div>
-                    <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-brand-100">Mock Tests</p><p className="mt-1 text-2xl font-black">100+</p></div>
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <div className="rounded-2xl bg-brand-50 p-4 text-center dark:bg-brand-950/50"><div className="text-xl">📖</div><p className="mt-1 text-xs font-bold text-slate-700 dark:text-slate-200">Learn</p></div>
-                  <div className="rounded-2xl bg-accent-50 p-4 text-center dark:bg-accent-950/40"><div className="text-xl">✍️</div><p className="mt-1 text-xs font-bold text-slate-700 dark:text-slate-200">Practice</p></div>
-                  <div className="rounded-2xl bg-brand-50 p-4 text-center dark:bg-brand-950/50"><div className="text-xl">🏆</div><p className="mt-1 text-xs font-bold text-slate-700 dark:text-slate-200">Succeed</p></div>
-                </div>
-              </div>
-            </div>
+            <div className="pta-float relative mx-auto w-full max-w-md lg:max-w-lg"><div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-r from-brand-500/15 to-accent-500/15 blur-2xl" /><div className="pta-glass relative rounded-[2rem] p-5 shadow-2xl"><div className="rounded-3xl bg-gradient-to-br from-brand-800 via-brand-700 to-accent-600 p-6 text-white shadow-xl"><div className="flex items-center justify-between"><div><p className="text-sm font-medium text-brand-100">Your learning journey</p><h2 className="mt-1 text-2xl font-black">Keep climbing 🚀</h2></div><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-2xl">🎓</div></div><div className="mt-7 rounded-2xl bg-white/10 p-4"><div className="mb-3 flex items-center justify-between text-sm"><span className="text-brand-100">Practice progress</span><span className="font-bold">82%</span></div><div className="h-3 overflow-hidden rounded-full bg-white/20"><div className="pta-progress h-full w-[82%] rounded-full bg-accent-300" /></div></div><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-brand-100">Questions</p><p className="mt-1 text-2xl font-black">1,250+</p></div><div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-brand-100">Mock Tests</p><p className="mt-1 text-2xl font-black">100+</p></div></div></div><div className="mt-4 grid grid-cols-3 gap-3"><div className="rounded-2xl bg-brand-50 p-4 text-center dark:bg-brand-950/50"><div className="text-xl">📖</div><p className="mt-1 text-xs font-bold">Learn</p></div><div className="rounded-2xl bg-accent-50 p-4 text-center dark:bg-accent-950/40"><div className="text-xl">✍️</div><p className="mt-1 text-xs font-bold">Practice</p></div><div className="rounded-2xl bg-brand-50 p-4 text-center dark:bg-brand-950/50"><div className="text-xl">🏆</div><p className="mt-1 text-xs font-bold">Succeed</p></div></div></div></div>
           </div>
-
-          <div className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {STATS.map((stat) => <div key={stat.label} className="pta-card rounded-2xl p-5 text-center"><p className="text-xl font-black text-brand-600 dark:text-brand-300">{stat.value}</p><p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{stat.label}</p></div>)}
-          </div>
+          <div className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-4">{STATS.map((stat) => <div key={stat.label} className="pta-card rounded-2xl p-5 text-center"><p className="text-xl font-black text-brand-600 dark:text-brand-300">{stat.value}</p><p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{stat.label}</p></div>)}</div>
         </div>
       </section>
 
-      <section className="bg-[var(--surface)]/70 py-16 dark:bg-brand-950/20">
-        <div className="mx-auto max-w-7xl px-5 sm:px-6">
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-300">Everything you need</p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl">Built to help you succeed</h2>
-            <p className="mt-4 text-slate-500 dark:text-slate-400">One platform for learning, practicing and preparing with confidence.</p>
-          </div>
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((feature) => <div key={feature.title} className="pta-card group rounded-3xl p-7 transition duration-300 hover:-translate-y-1 hover:border-accent-300 hover:shadow-xl"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-2xl transition group-hover:scale-110 dark:bg-brand-950/60">{feature.icon}</div><h3 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">{feature.title}</h3><p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">{feature.desc}</p></div>)}
-          </div>
-        </div>
-      </section>
+      <section className="relative overflow-hidden bg-[var(--surface)]/70 py-20 dark:bg-brand-950/20"><div className="mx-auto max-w-7xl px-5 sm:px-6"><div className="mx-auto max-w-2xl text-center"><p className="text-sm font-bold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-300">2026 JAMB Excellence</p><h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl">Our Pinnacle Performers 🏆</h2><p className="mt-4 text-slate-500 dark:text-slate-400">Meet the 2026 JAMB top performers we are proud to call Pinnacle Tutors Academy students.</p></div><div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">{TOP_SCORERS.map((student) => <article key={student.name} className="pta-score-card group overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-lg"><div className="relative flex h-52 items-center justify-center overflow-hidden bg-gradient-to-br from-brand-700 to-accent-500">{student.photo ? <img src={student.photo} alt={student.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" /> : <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-white/30 bg-white/15 text-3xl font-black text-white">{student.name.split(' ').map((n) => n[0]).slice(0,2).join('')}</div>}<div className="absolute left-3 top-3 rounded-full bg-white px-3 py-1 text-xs font-black text-brand-800">#{student.rank}</div><div className="absolute bottom-3 right-3 rounded-xl bg-brand-900/90 px-3 py-2 text-white backdrop-blur"><span className="block text-xl font-black">{student.score}</span><span className="text-[10px] font-bold uppercase tracking-wider text-brand-100">/ 400</span></div></div><div className="p-5"><h3 className="min-h-[3.5rem] text-lg font-black leading-5 text-slate-900 dark:text-white">{student.name}</h3><p className="mt-2 text-xs font-bold text-accent-600 dark:text-accent-300">{student.course}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{student.school} · {student.state}</p></div></article>)}</div><p className="mx-auto mt-7 max-w-3xl text-center text-xs leading-5 text-slate-400">Scores are based on the publicly reported 2026 UTME ranking. Public photographs are used only where a verifiable published image was available; no photograph has been fabricated.</p></div></section>
 
-      <section className="py-16">
-        <div className="mx-auto max-w-7xl px-5 sm:px-6"><div className="grid gap-6 md:grid-cols-2">
-          <Link href="/jamb" className="group overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-800 to-brand-600 p-8 text-white shadow-xl shadow-brand-900/15 transition hover:-translate-y-1"><div className="text-4xl">🎯</div><h2 className="mt-6 text-3xl font-black">JAMB Preparation</h2><p className="mt-3 max-w-md leading-7 text-brand-100">Build exam confidence with realistic UTME practice and mock examinations.</p><div className="mt-6 font-bold text-accent-200">Explore JAMB →</div></Link>
-          <Link href="/waec" className="group overflow-hidden rounded-[2rem] bg-gradient-to-br from-accent-700 to-accent-500 p-8 text-white shadow-xl shadow-accent-900/10 transition hover:-translate-y-1"><div className="text-4xl">📚</div><h2 className="mt-6 text-3xl font-black">WAEC Preparation</h2><p className="mt-3 max-w-md leading-7 text-accent-50">Strengthen your knowledge and prepare for your WAEC examinations with focused practice.</p><div className="mt-6 font-bold">Explore WAEC →</div></Link>
-        </div></div>
-      </section>
+      <section className="py-16"><div className="mx-auto max-w-7xl px-5 sm:px-6"><div className="mx-auto max-w-2xl text-center"><p className="text-sm font-bold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-300">Everything you need</p><h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white sm:text-4xl">Built to help you succeed</h2><p className="mt-4 text-slate-500 dark:text-slate-400">One platform for learning, practicing and preparing with confidence.</p></div><div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{FEATURES.map((feature) => <div key={feature.title} className="pta-card group rounded-3xl p-7 transition duration-300 hover:-translate-y-1 hover:border-accent-300 hover:shadow-xl"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-2xl transition group-hover:scale-110 dark:bg-brand-950/60">{feature.icon}</div><h3 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">{feature.title}</h3><p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">{feature.desc}</p></div>)}</div></div></section>
 
-      <section className="px-5 pb-16 sm:px-6"><div className="mx-auto max-w-5xl overflow-hidden rounded-[2rem] bg-gradient-to-r from-brand-800 via-brand-700 to-accent-600 px-6 py-12 text-center text-white shadow-2xl sm:px-12"><p className="text-sm font-bold uppercase tracking-[0.2em] text-accent-200">Your future starts here</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">Ready to reach your pinnacle?</h2><p className="mx-auto mt-4 max-w-xl text-brand-100">Create your account and start preparing smarter today.</p><Link href="/register" className="mt-8 inline-block rounded-2xl bg-white px-8 py-4 font-bold text-brand-800 shadow-lg transition hover:-translate-y-0.5 hover:bg-accent-50">Create Your Account →</Link></div></section>
+      <section className="py-16"><div className="mx-auto max-w-7xl px-5 sm:px-6"><div className="grid gap-6 md:grid-cols-2"><Link href="/jamb" className="group overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-800 to-brand-600 p-8 text-white shadow-xl transition hover:-translate-y-1"><div className="text-4xl">🎯</div><h2 className="mt-6 text-3xl font-black">JAMB Preparation</h2><p className="mt-3 max-w-md leading-7 text-brand-100">Build exam confidence with realistic UTME practice and mock examinations.</p><div className="mt-6 font-bold text-accent-200">Explore JAMB →</div></Link><Link href="/waec" className="group overflow-hidden rounded-[2rem] bg-gradient-to-br from-accent-700 to-accent-500 p-8 text-white shadow-xl transition hover:-translate-y-1"><div className="text-4xl">📚</div><h2 className="mt-6 text-3xl font-black">WAEC Preparation</h2><p className="mt-3 max-w-md leading-7 text-accent-50">Strengthen your knowledge and prepare for your WAEC examinations with focused practice.</p><div className="mt-6 font-bold">Explore WAEC →</div></Link></div></div></section>
+
+      <section className="px-5 pb-16 sm:px-6"><div className="mx-auto max-w-5xl overflow-hidden rounded-[2rem] bg-gradient-to-r from-brand-800 via-brand-700 to-accent-600 px-6 py-12 text-center text-white shadow-2xl sm:px-12"><p className="text-sm font-bold uppercase tracking-[0.2em] text-accent-200">Your future starts here</p><h2 className="mt-3 text-3xl font-black sm:text-4xl">Ready to reach your pinnacle?</h2><p className="mx-auto mt-4 max-w-xl text-brand-100">Create your account and start preparing smarter today.</p><Link href="/register" className="pta-shine mt-8 inline-block rounded-2xl bg-white px-8 py-4 font-bold text-brand-800 shadow-lg transition hover:-translate-y-0.5 hover:bg-accent-50">Create Your Account →</Link></div></section>
     </main>
   );
 }
