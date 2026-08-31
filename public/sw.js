@@ -1,12 +1,14 @@
-const CACHE_NAME = 'pwa-cache-v4';
+const CACHE_NAME = 'pwa-cache-v5';
 const OFFLINE_URL = '/offline.html';
 
+// Only precache files that are guaranteed to exist. A missing file in
+// cache.addAll() rejects the entire install event, leaving the service worker
+// without an active registration and breaking PushManager subscriptions.
 const PRECACHE_URLS = [
   '/',
   OFFLINE_URL,
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png',
   '/pinnacle-logo.png',
 ];
 
@@ -53,8 +55,6 @@ self.addEventListener('fetch', (event) => {
     request.destination === 'font' ||
     request.headers.get('RSC') === '1';
 
-  // Previously visited app pages/data are available offline. Online sessions
-  // still get fresh data first; the cached response is the offline fallback.
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
