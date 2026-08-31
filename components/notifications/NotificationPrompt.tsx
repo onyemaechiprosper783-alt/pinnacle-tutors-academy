@@ -21,25 +21,57 @@ function withTimeout<T>(promise: Promise<T>, message: string) {
   ]);
 }
 
-function dismissPrompt() {
-  localStorage.setItem(DISMISSED_KEY, '1');
+function getPublicVapidKey() {
+  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!key) throw new Error('Push notifications are not configured on this deployment.');
+  return key;
 }
 
 async function getReadyRegistration() {
-  let registration = await navigator.serviceWorker.getRegistration('/');
+  const existing = await navigator.serviceWorker.getRegistration('/');
+  if (existing?.active) return existing;
 
-  if (!registration) {
-    registration = await navigator.serviceWorker.register('/sw.js', {
-      updateViaCache: 'none',
-    });
+  if (!existing) {
+    await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
   }
-
-  if (registration.active) return registration;
 
   return withTimeout(
     navigator.serviceWorker.ready,
-    'The service worker did not become ready. Please reload the app and try again.',
+    'The notification service worker did not become ready. Please reload the app and try again.',
   );
+}
+
+async function ensureSubscription() {
+  const registration = await getReadyRegistration();
+  await registration.update().catch(() => {});
+
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await withTimeout(
+      registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(getPublicVapidKey()),
+      }),
+      'Push subscription timed out. Please reload the app and try again.',
+    );
+  }
+
+  const response = await withTimeout(
+    fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription.toJSON()),
+      credentials: 'same-origin',
+    }),
+    'Saving your notification subscription timed out. Please try again.',
+  );
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    throw new Error(details || `Could not save notification subscription (${response.status}).`);
+  }
+
+  return { registration, subscription };
 }
 
 export default function NotificationPrompt() {
@@ -48,24 +80,46 @@ export default function NotificationPrompt() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (
-      !('Notification' in window) ||
-      !('serviceWorker' in navigator) ||
-      !('PushManager' in window)
-    ) return;
+    let cancelled = false;
 
-    if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
-      console.error('NEXT_PUBLIC_VAPID_PUBLIC_KEY is missing.');
-      return;
-    }
+    const initialize = async () => {
+      if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+        setError('Push notifications are not configured correctly.');
+        setVisible(true);
+        return;
+      }
 
-    if (Notification.permission !== 'default') {
-      dismissPrompt();
-      return;
-    }
+      // If permission was already granted during a previous failed attempt,
+      // do not hide the prompt. Re-sync the subscription with the server.
+      if (Notification.permission === 'granted') {
+        try {
+          await ensureSubscription();
+          if (!cancelled) {
+            localStorage.setItem(DISMISSED_KEY, '1');
+            setVisible(false);
+          }
+        } catch (err) {
+          if (!cancelled) {
+            console.error('Notification resync failed:', err);
+            setError(err instanceof Error ? err.message : 'Could not connect notifications.');
+            setVisible(true);
+          }
+        }
+        return;
+      }
 
-    if (localStorage.getItem(DISMISSED_KEY) === '1') return;
-    setVisible(true);
+      if (Notification.permission === 'denied') {
+        setError('Notifications are blocked for Pinnacle Tutors. Allow notifications in your phone/browser settings, then reload the app.');
+        setVisible(true);
+        return;
+      }
+
+      if (localStorage.getItem(DISMISSED_KEY) !== '1') setVisible(true);
+    };
+
+    void initialize();
+    return () => { cancelled = true; };
   }, []);
 
   async function enableNotifications() {
@@ -74,50 +128,21 @@ export default function NotificationPrompt() {
     setError('');
 
     try {
-      const permission = await Notification.requestPermission();
+      let permission = Notification.permission;
+      if (permission === 'default') permission = await Notification.requestPermission();
 
       if (permission !== 'granted') {
         throw new Error(
           permission === 'denied'
-            ? 'Notifications are blocked for Pinnacle Tutors. Allow notifications in your browser/site settings, then try again.'
+            ? 'Notifications are blocked. Open your phone/browser site settings, allow notifications for Pinnacle Tutors, then try again.'
             : 'Notification permission was not granted.'
         );
       }
 
-      const registration = await getReadyRegistration();
+      const { registration } = await ensureSubscription();
 
-      let subscription = await registration.pushManager.getSubscription();
-
-      if (!subscription) {
-        subscription = await withTimeout(
-          registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(
-              process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-            ),
-          }),
-          'Push subscription timed out. Please reload the app and try again.',
-        );
-      }
-
-      const response = await withTimeout(
-        fetch('/api/push/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(subscription.toJSON()),
-        }),
-        'Saving the notification subscription timed out. Please try again.',
-      );
-
-      if (!response.ok) {
-        const details = await response.text().catch(() => '');
-        throw new Error(
-          `Could not save the notification subscription (${response.status})${details ? `: ${details}` : ''}`
-        );
-      }
-
-      // Give the user an immediate, local confirmation. This also verifies that
-      // the active service worker can display notifications on the device.
+      // This local notification proves the browser + service worker path works
+      // before relying on a remote Web Push delivery.
       await registration.showNotification('Pinnacle Tutors Academy', {
         body: 'Notifications are now enabled successfully. 🎉',
         icon: '/icon-192.png',
@@ -126,15 +151,11 @@ export default function NotificationPrompt() {
         data: { url: '/announcements' },
       });
 
-      dismissPrompt();
+      localStorage.setItem(DISMISSED_KEY, '1');
       setVisible(false);
-    } catch (error) {
-      console.error('Notification setup failed:', error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Could not enable notifications. Please try again.'
-      );
+    } catch (err) {
+      console.error('Notification setup failed:', err);
+      setError(err instanceof Error ? err.message : 'Could not enable notifications. Please try again.');
       setVisible(true);
     } finally {
       setBusy(false);
@@ -150,18 +171,12 @@ export default function NotificationPrompt() {
         <div className="min-w-0 flex-1">
           <h2 className="font-black text-[var(--foreground)]">Stay up to date</h2>
           <p className="mt-1 text-sm leading-5 text-[var(--muted)]">Get important announcements, exam updates and study reminders from Pinnacle Tutors.</p>
-
-          {error && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-              {error}
-            </div>
-          )}
-
+          {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={enableNotifications} disabled={busy} className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-brand-900/20 transition hover:bg-brand-700 disabled:opacity-60">
               {busy ? 'Enabling…' : 'Enable notifications'}
             </button>
-            <button type="button" onClick={() => { dismissPrompt(); setVisible(false); }} disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--muted)] transition hover:bg-[var(--background)] disabled:opacity-60">
+            <button type="button" onClick={() => { localStorage.setItem(DISMISSED_KEY, '1'); setVisible(false); }} disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-bold text-[var(--muted)] transition hover:bg-[var(--background)] disabled:opacity-60">
               Not now
             </button>
           </div>
