@@ -1,0 +1,83 @@
+name: Build Pinnacle Tutors Academy APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pwa]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      PINNACLE_URL: https://pinnacle-tutors-academy-ad3i.vercel.app
+      APP_NAME: Pinnacle Tutors Academy
+      PACKAGE_ID: com.pinnacletutorsacademy.app
+
+    steps:
+      - name: Checkout latest PWA branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify production site is reachable
+        run: |
+          curl -fL --retry 3 --retry-delay 2 --max-time 30 "$PINNACLE_URL" -o /tmp/pinnacle.html
+          grep -qi "Pinnacle Tutors Academy" /tmp/pinnacle.html
+
+      - name: Install Bubblewrap
+        run: npm install -g @bubblewrap/cli
+
+      - name: Initialize Android TWA project
+        run: |
+          mkdir -p android-twa
+          cd android-twa
+          bubblewrap init --manifest "$PINNACLE_URL/manifest.json" --directory . <<'EOF'
+          EOF
+
+      - name: Configure package identity
+        working-directory: android-twa
+        run: |
+          if [ -f twa-manifest.json ]; then
+            node -e "const fs=require('fs');const p='twa-manifest.json';const x=JSON.parse(fs.readFileSync(p));x.packageId=process.env.PACKAGE_ID;x.name=process.env.APP_NAME;x.shortName=process.env.APP_NAME;x.startUrl=process.env.PINNACLE_URL;fs.writeFileSync(p,JSON.stringify(x,null,2));"
+          fi
+
+      - name: Generate release keystore for CI build
+        working-directory: android-twa
+        run: |
+          keytool -genkeypair -v \
+            -keystore pinnacle-release.keystore \
+            -alias pinnacle \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass pinnacle-ci-only \
+            -keypass pinnacle-ci-only \
+            -dname "CN=Pinnacle Tutors Academy, OU=Android, O=Pinnacle Tutors Academy, L=Nigeria, C=NG"
+
+      - name: Build Android APK
+        working-directory: android-twa
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: pinnacle-ci-only
+          BUBBLEWRAP_KEY_PASSWORD: pinnacle-ci-only
+        run: |
+          bubblewrap build --skipPwaValidation
+          mkdir -p ../apk-output
+          find . -type f -name '*.apk' -print -exec cp {} ../apk-output/Pinnacle-Tutors-Academy.apk \;
+
+      - name: Verify APK exists
+        run: test -s apk-output/Pinnacle-Tutors-Academy.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Pinnacle-Tutors-Academy-APK
+          path: apk-output/Pinnacle-Tutors-Academy.apk
+          if-no-files-found: error
+          retention-days: 30
