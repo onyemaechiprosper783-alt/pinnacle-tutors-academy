@@ -83,7 +83,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .testimonial-rail { display: flex; gap: 1rem; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x mandatory; padding: 0.25rem 0.25rem 0.75rem; scrollbar-width: thin; }
 .testimonial-rail > * { flex: 0 0 min(88vw, 360px); scroll-snap-align: start; }
 
-.pta-intro { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; background: radial-gradient(circle at 50% 45%, #244d78 0%, #10243d 42%, #07111f 100%); color: white; pointer-events: none; animation: ptaIntroOut 2.45s cubic-bezier(.65,0,.35,1) forwards; }
+.pta-intro { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; background: radial-gradient(circle at 50% 45%, #244d78 0%, #10243d 42%, #07111f 100%); color: white; pointer-events: none; animation: ptaIntroOut 5s cubic-bezier(.65,0,.35,1) forwards; }
 .pta-intro-orb { position: absolute; width: 18rem; height: 18rem; border-radius: 999px; background: radial-gradient(circle, rgba(233,188,63,.34), rgba(233,188,63,0) 68%); filter: blur(4px); animation: ptaOrb 1.8s ease-out both; }
 .pta-intro-logo-wrap { position: relative; display: grid; place-items: center; width: 8rem; height: 8rem; border-radius: 2.25rem; padding: .75rem; background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.24); box-shadow: 0 0 0 0 rgba(233,188,63,.28), 0 25px 80px rgba(0,0,0,.35); backdrop-filter: blur(18px); animation: ptaLogoIn 1.15s cubic-bezier(.16,1,.3,1) both; }
 .pta-intro-logo { width: 100%; height: 100%; object-fit: contain; border-radius: 1.6rem; }
@@ -100,7 +100,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .pta-score-card:nth-child(4) { animation-delay: .24s; }
 .pta-score-card:nth-child(5) { animation-delay: .32s; }
 
-@keyframes ptaIntroOut { 0%,78% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
+@keyframes ptaIntroOut { 0%,88% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
 @keyframes ptaLogoIn { 0% { opacity: 0; transform: scale(.45) rotate(-12deg); box-shadow: 0 0 0 0 rgba(233,188,63,0); } 55% { opacity: 1; transform: scale(1.08) rotate(2deg); box-shadow: 0 0 0 18px rgba(233,188,63,.06), 0 25px 80px rgba(0,0,0,.35); } 100% { transform: scale(1) rotate(0); box-shadow: 0 0 0 10px rgba(233,188,63,.04), 0 25px 80px rgba(0,0,0,.35); } }
 @keyframes ptaTextIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ptaOrb { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: scale(1.25); } }
