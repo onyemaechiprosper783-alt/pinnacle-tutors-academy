@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -15,7 +15,46 @@ function LoginForm() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [restoringSession, setRestoringSession] = useState(true);
   const [serverError, setServerError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const restoreSession = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!active) return;
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        const next = params.get('next');
+        if (profile?.role === 'admin' || profile?.role === 'super_admin') {
+          router.replace(next && next.startsWith('/admin') ? next : '/admin/dashboard');
+        } else {
+          router.replace(next && !next.startsWith('/admin') ? next : '/dashboard');
+        }
+        return;
+      }
+      setRestoringSession(false);
+    };
+    restoreSession();
+    return () => { active = false; };
+  }, [router, params, supabase]);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) return;
+      const next = params.get('next');
+      if (session.user) {
+        supabase.from('profiles').select('role').eq('id', session.user.id).single().then(({ data: profile }) => {
+          if (profile?.role === 'admin' || profile?.role === 'super_admin') {
+            router.replace(next && next.startsWith('/admin') ? next : '/admin/dashboard');
+          } else {
+            router.replace(next && !next.startsWith('/admin') ? next : '/dashboard');
+          }
+        });
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [router, params, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setServerError('');
@@ -37,6 +76,17 @@ function LoginForm() {
     if (profile?.role === 'admin' || profile?.role === 'super_admin') router.push(next && next.startsWith('/admin') ? next : '/admin/dashboard');
     else router.push(next && !next.startsWith('/admin') ? next : '/dashboard');
     router.refresh();
+  }
+
+  if (restoringSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-5 text-[var(--foreground)]">
+        <div className="text-center">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--border)] border-t-[var(--primary)]" />
+          <p className="mt-4 text-sm font-semibold text-[var(--muted)]">Restoring your session…</p>
+        </div>
+      </main>
+    );
   }
 
   return (
