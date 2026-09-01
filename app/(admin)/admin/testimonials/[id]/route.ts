@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getCurrentProfile } from '@/lib/supabase/server';
+import { getCurrentProfile, createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const updateSchema = z.object({
@@ -46,9 +46,9 @@ export async function PATCH(
   }
 
   try {
-    const admin = createAdminClient();
+    const supabase = await createClient();
 
-    const { data, error } = await admin
+    const { data, error } = await supabase
       .schema('public')
       .from('testimonials')
       .update(parsed.data)
@@ -108,10 +108,11 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    const admin = createAdminClient();
+    // Use the authenticated user's session for the database operation.
+    // The testimonials table has an RLS policy allowing only admins to delete.
+    const supabase = await createClient();
 
-    // Fetch the testimonial first so its uploaded photo can be cleaned up too.
-    const { data: testimonial, error: fetchError } = await admin
+    const { data: testimonial, error: fetchError } = await supabase
       .schema('public')
       .from('testimonials')
       .select('id, photo_url')
@@ -133,9 +134,7 @@ export async function DELETE(
       );
     }
 
-    // Delete the database row first. Storage cleanup is best-effort so a
-    // missing/old photo can never prevent the testimonial itself being deleted.
-    const { error: deleteError } = await admin
+    const { error: deleteError } = await supabase
       .schema('public')
       .from('testimonials')
       .delete()
@@ -154,17 +153,23 @@ export async function DELETE(
       );
     }
 
-    // Remove the associated image after the row is gone. A storage failure is
-    // logged but does not make the successful testimonial deletion look failed.
-    const photoPath = getStoragePath(testimonial.photo_url);
+    // Storage cleanup is best-effort and cannot make the database deletion fail.
+    if (testimonial.photo_url) {
+      const photoPath = getStoragePath(testimonial.photo_url);
 
-    if (photoPath) {
-      const { error: storageError } = await admin.storage
-        .from('testimonial-photos')
-        .remove([photoPath]);
+      if (photoPath) {
+        try {
+          const admin = createAdminClient();
+          const { error: storageError } = await admin.storage
+            .from('testimonial-photos')
+            .remove([photoPath]);
 
-      if (storageError) {
-        console.error('TESTIMONIAL PHOTO CLEANUP ERROR:', storageError);
+          if (storageError) {
+            console.error('TESTIMONIAL PHOTO CLEANUP ERROR:', storageError);
+          }
+        } catch (storageException) {
+          console.error('TESTIMONIAL PHOTO CLEANUP EXCEPTION:', storageException);
+        }
       }
     }
 
