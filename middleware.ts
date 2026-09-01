@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const STUDENT_PREFIXES = ['/dashboard', '/practice', '/mock', '/cbt', '/challenge', '/millionaire', '/results', '/profile', '/settings', '/class-notes', '/subjects', '/progress', '/leaderboard', '/community'];
@@ -8,14 +8,26 @@ const ADMIN_PREFIX = '/admin';
 const ACTIVATION_ONLY_AT = new Date('2026-10-01T00:00:00+01:00');
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request: { headers: request.headers } });
-  const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    cookies: {
-      get(name: string) { return request.cookies.get(name)?.value; },
-      set(name: string, value: string, options: CookieOptions) { response = NextResponse.next({ request: { headers: request.headers } }); response.cookies.set({ name, value, ...options }); },
-      remove(name: string, options: CookieOptions) { response = NextResponse.next({ request: { headers: request.headers } }); response.cookies.set({ name, value: '', ...options }); },
-    },
-  });
+  let response = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
 
   const { data: { user } } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
@@ -25,21 +37,34 @@ export async function middleware(request: NextRequest) {
 
   if (!user && (isAdminRoute || isStudentRoute || isProtectedApi)) {
     if (isProtectedApi) return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 });
-    const redirectUrl = new URL('/login', request.url); redirectUrl.searchParams.set('next', path); return NextResponse.redirect(redirectUrl);
+    const redirectUrl = new URL('/login', request.url);
+    redirectUrl.searchParams.set('next', path);
+    return NextResponse.redirect(redirectUrl);
   }
 
   if (isAdminRoute && user) {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) return NextResponse.redirect(new URL('/dashboard?error=unauthorized', request.url));
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+      return NextResponse.redirect(new URL('/dashboard?error=unauthorized', request.url));
+    }
   }
 
   if (user && (PROTECTED_PREFIXES.some((p) => path.startsWith(p)) || isProtectedApi) && new Date() >= ACTIVATION_ONLY_AT) {
     const { data: profile } = await supabase.from('profiles').select('id').eq('id', user.id).single();
     if (profile) {
-      const { data: activationAccess } = await supabase.from('student_access').select('access_key_id, access_keys!inner(key_type, status, is_active)').eq('profile_id', profile.id).eq('access_type', 'activation_key').eq('access_keys.status', 'used').eq('access_keys.is_active', true).limit(1);
+      const { data: activationAccess } = await supabase
+        .from('student_access')
+        .select('access_key_id, access_keys!inner(key_type, status, is_active)')
+        .eq('profile_id', profile.id)
+        .eq('access_type', 'activation_key')
+        .eq('access_keys.status', 'used')
+        .eq('access_keys.is_active', true)
+        .limit(1);
       if (!activationAccess?.length) {
         if (isProtectedApi) return NextResponse.json({ error: 'Activation Key required.' }, { status: 403 });
-        const redirectUrl = new URL('/dashboard', request.url); redirectUrl.searchParams.set('access', 'activation-required'); return NextResponse.redirect(redirectUrl);
+        const redirectUrl = new URL('/dashboard', request.url);
+        redirectUrl.searchParams.set('access', 'activation-required');
+        return NextResponse.redirect(redirectUrl);
       }
     }
   }
@@ -47,4 +72,6 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ['/dashboard/:path*', '/practice/:path*', '/mock/:path*', '/cbt/:path*', '/challenge/:path*', '/millionaire/:path*', '/results/:path*', '/profile/:path*', '/settings/:path*', '/class-notes/:path*', '/subjects/:path*', '/progress/:path*', '/leaderboard/:path*', '/community/:path*', '/api/exams/:path*', '/api/class-notes/:path*', '/admin/:path*'] };
+export const config = {
+  matcher: ['/dashboard/:path*', '/practice/:path*', '/mock/:path*', '/cbt/:path*', '/challenge/:path*', '/millionaire/:path*', '/results/:path*', '/profile/:path*', '/settings/:path*', '/class-notes/:path*', '/subjects/:path*', '/progress/:path*', '/leaderboard/:path*', '/community/:path*', '/api/exams/:path*', '/api/class-notes/:path*', '/admin/:path*'],
+};
