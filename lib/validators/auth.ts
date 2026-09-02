@@ -7,12 +7,12 @@ export const registerSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
   exam_target: z.enum(['jamb', 'waec', 'both']).optional(),
 
-  // Students must provide either a Product Key or an Activation Key.
+  // Students now activate PTA with an Activation Key only.
   access_key: z
     .string()
     .trim()
-    .min(1, 'Enter your Product Key or Activation Key')
-    .max(100, 'Invalid access key'),
+    .min(1, 'Enter your Activation Key')
+    .max(100, 'Invalid activation key'),
 });
 
 export const loginSchema = z.object({
@@ -22,7 +22,7 @@ export const loginSchema = z.object({
 
 export const forgotPasswordSchema = z.object({
   email: z.string().email('Enter a valid email'),
-  });
+});
 
 export const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
