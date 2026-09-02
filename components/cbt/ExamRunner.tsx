@@ -6,50 +6,26 @@ import { useExamTimer } from '@/lib/hooks/useExamTimer';
 import { Calculator } from '@/components/calculator/Calculator';
 import type { QuestionPublic } from '@/types/database';
 
-interface ExamRunnerProps {
-  attemptId: string;
-  mode: 'practice' | 'mock' | 'cbt';
-  questions: QuestionPublic[];
-  durationSeconds: number | null;
-}
-
-interface Feedback {
-  is_correct: boolean;
-  correct_answer: 'A' | 'B' | 'C' | 'D';
-  explanation: string | null;
-}
-
-type QuestionWithSubject = QuestionPublic & {
-  subject_id?: string;
-  subject_name?: string;
-  subject?: string;
-  subjects?: { name?: string | null } | null;
-  question?: QuestionWithSubject;
-};
-
-interface CbtSection {
-  key: string;
-  name: string;
-  count: number;
-  questions: QuestionWithSubject[];
-}
-
-interface AttemptResponse {
-  attempt?: {
-    config?: { challenge?: { global_deadline?: string | null } | null } | null;
-  };
-}
+interface ExamRunnerProps { attemptId: string; mode: 'practice' | 'mock' | 'cbt'; questions: QuestionPublic[]; durationSeconds: number | null; }
+interface Feedback { is_correct: boolean; correct_answer: 'A' | 'B' | 'C' | 'D'; explanation: string | null; }
+type QuestionWithSubject = QuestionPublic & { subject_id?: string; subject_name?: string; subject?: string; subjects?: { name?: string | null } | null; question?: QuestionWithSubject; };
+interface CbtSection { key: string; name: string; count: number; questions: QuestionWithSubject[]; }
+interface AttemptResponse { attempt?: { config?: { challenge?: { global_deadline?: string | null } | null } | null; }; }
 
 const ENGLISH_SUBJECT_ID = 'e5705892-de46-425c-af42-e37a3eddc93d';
 const LEKKI_HEADMASTER_SUBJECT_ID = '3bca9d00-18fd-4064-b3ac-41da6e7eefa6';
 const BOOKMARK_STORAGE_KEY = 'pinnacle-bookmarked-questions';
+const ANSWERS_STORAGE_KEY = 'pta-exam-answers';
+
+type AnswerLetter = 'A' | 'B' | 'C' | 'D';
+
+type PendingAnswer = { question_id: string; selected_answer: AnswerLetter };
 
 export function ExamRunner({ attemptId, mode, questions, durationSeconds }: ExamRunnerProps) {
   const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({});
+  const [answers, setAnswers] = useState<Record<string, AnswerLetter>>({});
   const [feedback, setFeedback] = useState<Record<string, Feedback>>({});
-  const [answerLoading, setAnswerLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
   const [activeSectionKey, setActiveSectionKey] = useState('english');
@@ -57,16 +33,20 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
   const [challengeSecondsLeft, setChallengeSecondsLeft] = useState<number | null>(null);
   const [challengeLoading, setChallengeLoading] = useState(mode === 'cbt');
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const pendingAnswersRef = useRef<Record<string, PendingAnswer>>({});
+  const syncWorkersRef = useRef<Record<string, Promise<void>>>({});
   const handleSubmitRef = useRef<(() => void) | null>(null);
+
+  const answersStorageKey = `${ANSWERS_STORAGE_KEY}:${attemptId}`;
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(BOOKMARK_STORAGE_KEY) ?? '[]') as Array<{ id: string }>;
-      setBookmarkedIds(new Set(saved.map((item) => item.id)));
-    } catch {
-      setBookmarkedIds(new Set());
-    }
-  }, []);
+      const savedBookmarks = JSON.parse(localStorage.getItem(BOOKMARK_STORAGE_KEY) ?? '[]') as Array<{ id: string }>;
+      setBookmarkedIds(new Set(savedBookmarks.map((item) => item.id)));
+      const savedAnswers = JSON.parse(localStorage.getItem(answersStorageKey) ?? '{}') as Record<string, AnswerLetter>;
+      setAnswers(savedAnswers);
+    } catch { setBookmarkedIds(new Set()); }
+  }, [answersStorageKey]);
 
   const normalizedQuestions = useMemo<QuestionWithSubject[]>(() => questions.map((raw) => {
     const item = raw as QuestionWithSubject;
@@ -83,7 +63,6 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
       const name = getSubjectName(q).toLowerCase();
       return q.subject_id === ENGLISH_SUBJECT_ID || q.subject_id === LEKKI_HEADMASTER_SUBJECT_ID || name.includes('english') || name.includes('lekki headmaster');
     });
-
     const otherGroups = new Map<string, QuestionWithSubject[]>();
     for (const question of normalizedQuestions) {
       const name = getSubjectName(question).toLowerCase();
@@ -92,11 +71,9 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
       const key = question.subject_id ?? (getSubjectName(question) || 'unknown');
       otherGroups.set(key, [...(otherGroups.get(key) ?? []), question]);
     }
-
     const sections: CbtSection[] = [];
     if (english.length) sections.push({ key: 'english', name: 'English Language', count: 60, questions: english.slice(0, 60) });
     Array.from(otherGroups.entries()).slice(0, 3).forEach(([id, group], index) => sections.push({ key: `subject_${index + 1}_${id}`, name: getSubjectName(group[0]) || `Subject ${index + 1}`, count: 40, questions: group.slice(0, 40) }));
-
     if (sections.length === 4 && sections.every((section) => section.questions.length === section.count)) return sections;
     if (normalizedQuestions.length >= 180) return [
       { key: 'english', name: 'English Language', count: 60, questions: normalizedQuestions.slice(0, 60) },
@@ -115,6 +92,48 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
   const unansweredCount = Math.max(0, questions.length - answeredCount);
   const answeredInCurrentSection = sectionQuestions.filter((question) => !!answers[question.id]).length;
   const currentFeedback = currentQuestion ? feedback[currentQuestion.id] : undefined;
+
+  const persistAnswers = useCallback((next: Record<string, AnswerLetter>) => {
+    try { localStorage.setItem(answersStorageKey, JSON.stringify(next)); } catch { /* best effort */ }
+  }, [answersStorageKey]);
+
+  const syncAnswer = useCallback((questionId: string, selectedAnswer: AnswerLetter) => {
+    pendingAnswersRef.current[questionId] = { question_id: questionId, selected_answer: selectedAnswer };
+    if (syncWorkersRef.current[questionId]) return syncWorkersRef.current[questionId];
+
+    const worker = (async () => {
+      try {
+        while (pendingAnswersRef.current[questionId]) {
+          const pending = pendingAnswersRef.current[questionId];
+          delete pendingAnswersRef.current[questionId];
+          const response = await fetch(`/api/exams/${attemptId}/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pending),
+            keepalive: true,
+          });
+          const data = await response.json().catch(() => null);
+          if (!response.ok) {
+            pendingAnswersRef.current[questionId] = pending;
+            throw new Error(data?.error ?? 'Could not save answer.');
+          }
+          if (mode === 'practice' && data?.correct_answer) {
+            setFeedback((previous) => ({ ...previous, [questionId]: { is_correct: Boolean(data.is_correct), correct_answer: data.correct_answer, explanation: data.explanation ?? null } }));
+          }
+        }
+      } catch (error) { console.error('Background answer sync error:', error); }
+      finally { delete syncWorkersRef.current[questionId]; }
+    })();
+    syncWorkersRef.current[questionId] = worker;
+    return worker;
+  }, [attemptId, mode]);
+
+  const flushPendingAnswers = useCallback(async () => {
+    const workers = Object.values(syncWorkersRef.current);
+    if (workers.length) await Promise.allSettled(workers);
+    const remaining = Object.values(pendingAnswersRef.current);
+    if (remaining.length) await Promise.allSettled(remaining.map((item) => syncAnswer(item.question_id, item.selected_answer)));
+  }, [syncAnswer]);
 
   const toggleBookmark = useCallback((question: QuestionWithSubject) => {
     try {
@@ -150,12 +169,14 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
     }
     setSubmitting(true);
     try {
-      const response = await fetch(`/api/exams/${attemptId}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_submitted: autoSubmitted }) });
+      await flushPendingAnswers();
+      const response = await fetch(`/api/exams/${attemptId}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_submitted: autoSubmitted }), keepalive: true });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error ?? 'Could not submit exam.');
+      try { localStorage.removeItem(answersStorageKey); } catch { /* best effort */ }
       router.push(`/results/${attemptId}`);
     } catch (error) { console.error('Submit error:', error); setSubmitting(false); }
-  }, [attemptId, mode, router, submitting, unansweredCount]);
+  }, [answersStorageKey, attemptId, flushPendingAnswers, mode, router, submitting, unansweredCount]);
 
   useEffect(() => { handleSubmitRef.current = () => { void handleSubmit(true); }; }, [handleSubmit]);
 
@@ -175,18 +196,17 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
   const normalTimer = useExamTimer(mode === 'cbt' && challengeDeadline ? null : durationSeconds, () => handleSubmit(true));
 
-  async function selectAnswer(letter: 'A' | 'B' | 'C' | 'D') {
-    if (!currentQuestion || answerLoading || submitting) return;
+  function selectAnswer(letter: AnswerLetter) {
+    if (!currentQuestion || submitting) return;
     if (mode === 'practice' && feedback[currentQuestion.id]) return;
-    setAnswers((previous) => ({ ...previous, [currentQuestion.id]: letter }));
-    setAnswerLoading(true);
-    try {
-      const response = await fetch(`/api/exams/${attemptId}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question_id: currentQuestion.id, selected_answer: letter }) });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error ?? 'Could not save answer.');
-      if (mode === 'practice' && data?.correct_answer) setFeedback((previous) => ({ ...previous, [currentQuestion.id]: { is_correct: Boolean(data.is_correct), correct_answer: data.correct_answer, explanation: data.explanation ?? null } }));
-    } catch (error) { console.error('Answer error:', error); }
-    finally { setAnswerLoading(false); }
+    const questionId = currentQuestion.id;
+    setAnswers((previous) => {
+      const next = { ...previous, [questionId]: letter };
+      persistAnswers(next);
+      return next;
+    });
+    // Deliberately do not await this request. The CBT UI stays instant while the answer is persisted in the background.
+    void syncAnswer(questionId, letter);
   }
 
   function goNext() {
@@ -224,9 +244,9 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
 
         {showCalculator && <div className="mb-2 shrink-0 rounded-xl border border-slate-800 bg-slate-900 p-2"><Calculator /></div>}
 
-        <main className="min-h-0 flex-1"><div className="h-full rounded-2xl border border-slate-800 bg-slate-900/95 p-3 shadow-xl sm:p-5"><div className="mb-3 flex items-center justify-between gap-2"><span className="rounded-lg bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{activeSection?.name ?? 'Question'}</span><span className="text-[10px] text-slate-500">{answeredInCurrentSection}/{sectionQuestions.length} answered</span></div><p className="mb-4 text-[15px] font-semibold leading-6 text-white sm:text-lg sm:leading-7">{currentQuestion.question_text}</p><div className="grid gap-2 sm:gap-2.5">{(['A', 'B', 'C', 'D'] as const).map((letter) => { const optionKey = `option_${letter.toLowerCase()}` as 'option_a' | 'option_b' | 'option_c' | 'option_d'; const selected = answers[currentQuestion.id] === letter; const correct = currentFeedback?.correct_answer === letter; const incorrectSelected = currentFeedback && selected && !currentFeedback.is_correct; return <button key={letter} type="button" onClick={() => void selectAnswer(letter)} disabled={answerLoading || submitting || (mode === 'practice' && !!currentFeedback)} className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left text-sm leading-5 transition sm:p-3.5 ${correct ? 'border-green-500 bg-green-500/10 text-green-200' : incorrectSelected ? 'border-red-500 bg-red-500/10 text-red-200' : selected ? 'border-accent-400 bg-accent-400/10 text-accent-100' : 'border-slate-700 bg-slate-950/50 text-slate-200 hover:border-brand-500 hover:bg-brand-950/40'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-black ${selected || correct ? 'border-current' : 'border-slate-600'}`}>{letter}</span><span>{currentQuestion[optionKey]}</span></button>; })}</div>{answerLoading && <p className="mt-2 text-[10px] text-slate-500">Saving answer…</p>}{currentFeedback && <div className={`mt-3 rounded-xl border p-3 text-xs ${currentFeedback.is_correct ? 'border-green-700 bg-green-950/30 text-green-200' : 'border-red-700 bg-red-950/30 text-red-200'}`}><p className="font-black">{currentFeedback.is_correct ? 'Correct ✓' : `Not quite. Correct answer: ${currentFeedback.correct_answer}`}</p>{currentFeedback.explanation && <p className="mt-1.5 leading-5 text-slate-300">{currentFeedback.explanation}</p>}</div>}</div></main>
+        <main className="min-h-0 flex-1"><div className="h-full rounded-2xl border border-slate-800 bg-slate-900/95 p-3 shadow-xl sm:p-5"><div className="mb-3 flex items-center justify-between gap-2"><span className="rounded-lg bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{activeSection?.name ?? 'Question'}</span><span className="text-[10px] text-slate-500">{answeredInCurrentSection}/{sectionQuestions.length} answered</span></div><p className="mb-4 text-[15px] font-semibold leading-6 text-white sm:text-lg sm:leading-7">{currentQuestion.question_text}</p><div className="grid gap-2 sm:gap-2.5">{(['A', 'B', 'C', 'D'] as const).map((letter) => { const optionKey = `option_${letter.toLowerCase()}` as 'option_a' | 'option_b' | 'option_c' | 'option_d'; const selected = answers[currentQuestion.id] === letter; const correct = currentFeedback?.correct_answer === letter; const incorrectSelected = currentFeedback && selected && !currentFeedback.is_correct; return <button key={letter} type="button" onClick={() => selectAnswer(letter)} disabled={submitting || (mode === 'practice' && !!currentFeedback)} className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left text-sm leading-5 transition sm:p-3.5 ${correct ? 'border-green-500 bg-green-500/10 text-green-200' : incorrectSelected ? 'border-red-500 bg-red-500/10 text-red-200' : selected ? 'border-accent-400 bg-accent-400/10 text-accent-100' : 'border-slate-700 bg-slate-950/50 text-slate-200 hover:border-brand-500 hover:bg-brand-950/40'}`}><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-black ${selected || correct ? 'border-current' : 'border-slate-600'}`}>{letter}</span><span>{currentQuestion[optionKey]}</span></button>; })}</div>{currentFeedback && <div className={`mt-3 rounded-xl border p-3 text-xs ${currentFeedback.is_correct ? 'border-green-700 bg-green-950/30 text-green-200' : 'border-red-700 bg-red-950/30 text-red-200'}`}><p className="font-black">{currentFeedback.is_correct ? 'Correct ✓' : `Not quite. Correct answer: ${currentFeedback.correct_answer}`}</p>{currentFeedback.explanation && <p className="mt-1.5 leading-5 text-slate-300">{currentFeedback.explanation}</p>}</div>}</div></main>
 
-        <footer className="sticky bottom-0 z-20 mt-2 shrink-0 border-t border-slate-800 bg-slate-950/95 py-2 backdrop-blur"><div className="flex items-center justify-between gap-2"><button type="button" onClick={goPrevious} disabled={safeCurrentIndex === 0 && (mode !== 'cbt' || activeSectionKey === cbtSections[0]?.key)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-30 sm:px-4">← Previous</button><div className="flex items-center gap-2"><button type="button" onClick={() => void handleSubmit(false)} disabled={submitting} className="rounded-xl bg-accent-500 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg shadow-accent-900/20 transition hover:bg-accent-400 disabled:opacity-60 sm:px-5">{submitting ? 'Submitting…' : 'Submit Exam'}</button>{safeCurrentIndex < sectionQuestions.length - 1 || (mode === 'cbt' && cbtSections.findIndex((section) => section.key === activeSectionKey) < cbtSections.length - 1) ? <button type="button" onClick={goNext} disabled={answerLoading || submitting} className="rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-black text-white transition hover:bg-brand-500 disabled:opacity-60 sm:px-4">Next →</button> : null}</div></div><p className="mt-1 text-center text-[9px] text-slate-600">You can submit with unanswered questions. They will be counted as unanswered, not as wrong.</p></footer>
+        <footer className="sticky bottom-0 z-20 mt-2 shrink-0 border-t border-slate-800 bg-slate-950/95 py-2 backdrop-blur"><div className="flex items-center justify-between gap-2"><button type="button" onClick={goPrevious} disabled={safeCurrentIndex === 0 && (mode !== 'cbt' || activeSectionKey === cbtSections[0]?.key)} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 disabled:cursor-not-allowed disabled:opacity-30 sm:px-4">← Previous</button><div className="flex items-center gap-2"><button type="button" onClick={() => void handleSubmit(false)} disabled={submitting} className="rounded-xl bg-accent-500 px-3.5 py-2 text-xs font-black text-slate-950 shadow-lg shadow-accent-900/20 transition hover:bg-accent-400 disabled:opacity-60 sm:px-5">{submitting ? 'Submitting…' : 'Submit Exam'}</button>{safeCurrentIndex < sectionQuestions.length - 1 || (mode === 'cbt' && cbtSections.findIndex((section) => section.key === activeSectionKey) < cbtSections.length - 1) ? <button type="button" onClick={goNext} disabled={submitting} className="rounded-xl bg-brand-600 px-3.5 py-2 text-xs font-black text-white transition hover:bg-brand-500 disabled:opacity-60 sm:px-4">Next →</button> : null}</div></div><p className="mt-1 text-center text-[9px] text-slate-600">Answers are saved instantly on this device and synchronized in the background.</p></footer>
       </div>
     </div>
   );
