@@ -18,7 +18,6 @@ const BOOKMARK_STORAGE_KEY = 'pinnacle-bookmarked-questions';
 const ANSWERS_STORAGE_KEY = 'pta-exam-answers';
 
 type AnswerLetter = 'A' | 'B' | 'C' | 'D';
-
 type PendingAnswer = { question_id: string; selected_answer: AnswerLetter };
 
 export function ExamRunner({ attemptId, mode, questions, durationSeconds }: ExamRunnerProps) {
@@ -34,7 +33,7 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
   const [challengeLoading, setChallengeLoading] = useState(mode === 'cbt');
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const pendingAnswersRef = useRef<Record<string, PendingAnswer>>({});
-  const syncWorkersRef = useRef<Record<string, Promise<void>>>({});
+  const syncWorkersRef = useRef<Partial<Record<string, Promise<void>>>>({});
   const handleSubmitRef = useRef<(() => void) | null>(null);
 
   const answersStorageKey = `${ANSWERS_STORAGE_KEY}:${attemptId}`;
@@ -205,7 +204,6 @@ export function ExamRunner({ attemptId, mode, questions, durationSeconds }: Exam
       persistAnswers(next);
       return next;
     });
-    // Deliberately do not await this request. The CBT UI stays instant while the answer is persisted in the background.
     void syncAnswer(questionId, letter);
   }
 
