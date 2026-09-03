@@ -6,16 +6,14 @@ export async function GET() {
   const caller = await getCurrentProfile();
 
   if (!caller) {
-    return NextResponse.json(
-      { error: 'Not authorized.' },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: 'Not authorized.' }, { status: 401 });
   }
 
   const admin = createAdminClient();
-
   const now = new Date().toISOString();
 
+  // Return both live and scheduled rounds. The join endpoint still blocks
+  // students from entering a round before its opens_at time.
   const { data, error } = await admin
     .from('challenge_rounds')
     .select(`
@@ -29,18 +27,19 @@ export async function GET() {
       is_active
     `)
     .eq('is_active', true)
-    .or(`opens_at.is.null,opens_at.lte.${now}`)
     .or(`closes_at.is.null,closes_at.gte.${now}`)
+    .order('opens_at', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Available challenge rounds error:', error);
-
     return NextResponse.json(
-      { error: 'Could not load available challenge rounds.' },
+      { error: 'Could not load challenge rounds.' },
       { status: 500 }
     );
   }
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(data ?? [], {
+    headers: { 'Cache-Control': 'no-store' },
+  });
 }
