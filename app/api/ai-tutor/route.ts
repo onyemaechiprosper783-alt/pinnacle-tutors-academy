@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { getCurrentProfile } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const SYSTEM_PROMPT = `You are Nia, the AI Tutor for Pinnacle Tutors Academy. You are a patient, intelligent teacher. Explain answers clearly and at an appropriate student level. Prefer step-by-step teaching, examples, and simple language. Help with school subjects, exam preparation, concepts, calculations, writing, study skills, and general educational questions. If a student asks for an answer, explain the reasoning so they learn it. Never claim certainty when you are unsure; say what you know and suggest how to verify uncertain facts. Do not help a student cheat on an active exam or challenge.`;
 
@@ -22,7 +23,6 @@ export async function POST(request: Request) {
     const message = typeof body?.message === 'string' ? body.message.trim() : '';
     if (!message) return NextResponse.json({ error: 'Message is required.' }, { status: 400 });
     if (message.length > 4000) return NextResponse.json({ error: 'Message is too long.' }, { status: 400 });
-
     if (looksLikeActiveAttempt(body?.activeAttempt)) {
       return NextResponse.json({ error: 'Nia is unavailable while you are writing an exam or challenge.' }, { status: 403 });
     }
@@ -34,22 +34,40 @@ export async function POST(request: Request) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
+    const stream = await ai.models.generateContentStream({
       model: 'gemini-3.6-flash',
       contents: message,
       config: {
         systemInstruction: SYSTEM_PROMPT,
-        maxOutputTokens: 1200,
+        maxOutputTokens: 900,
       },
     });
 
-    return NextResponse.json({
-      answer: response.text?.trim() || 'I could not generate an answer right now.',
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            const text = chunk.text ?? '';
+            if (text) controller.enqueue(encoder.encode(text));
+          }
+          controller.close();
+        } catch (error) {
+          console.error('AI Tutor stream error:', error);
+          controller.error(error);
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Content-Type-Options': 'nosniff',
+      },
     });
   } catch (error) {
     console.error('AI Tutor Gemini error:', error);
-    return NextResponse.json({
-      error: 'The AI Tutor could not answer right now. Please try again.',
-    }, { status: 500 });
+    return NextResponse.json({ error: 'The AI Tutor could not answer right now. Please try again.' }, { status: 500 });
   }
 }
