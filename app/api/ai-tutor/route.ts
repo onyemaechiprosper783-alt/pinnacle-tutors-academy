@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { getCurrentProfile } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,8 +16,11 @@ function looksLikeActiveAttempt(value: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const profile = await getCurrentProfile();
-    if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // This endpoint only needs authentication, not the student's profile.
+    // Avoiding the extra profiles query removes one database round-trip before Gemini starts.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
     const message = typeof body?.message === 'string' ? body.message.trim() : '';
