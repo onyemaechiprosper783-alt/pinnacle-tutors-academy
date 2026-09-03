@@ -18,9 +18,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const parsed = joinSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Please provide a round, exactly 3 JAMB subjects, and your WhatsApp number.' }, { status: 400 });
-  }
+  if (!parsed.success) return NextResponse.json({ error: 'Please provide a round, exactly 3 JAMB subjects, and your WhatsApp number.' }, { status: 400 });
 
   const { round_id, selected_subject_ids, whatsapp_number } = parsed.data;
   if (selected_subject_ids.includes(ENGLISH_SUBJECT_ID) || selected_subject_ids.includes(LEKKI_HEADMASTER_SUBJECT_ID)) {
@@ -41,25 +39,25 @@ export async function POST(request: Request) {
   if (round.opens_at && new Date(round.opens_at) > now) return NextResponse.json({ error: 'This challenge round has not opened yet.' }, { status: 400 });
   if (round.closes_at && new Date(round.closes_at) <= now) return NextResponse.json({ error: 'This challenge round has already closed.' }, { status: 400 });
 
-  // The challenge has one global clock. It starts when the admin activates
-  // the round, not when an individual student joins it.
+  // The challenge has one global clock. A scheduled round starts its clock
+  // at the scheduled opening time; an unscheduled round starts on activation.
   const configuredDuration = Math.max(1, round.duration_seconds ?? 120 * 60);
-  const activatedAt = round.activated_at ? new Date(round.activated_at) : now;
+  const activatedAt = round.activated_at
+    ? new Date(round.activated_at)
+    : round.opens_at
+      ? new Date(round.opens_at)
+      : now;
   const configuredDeadline = new Date(activatedAt.getTime() + configuredDuration * 1000);
   const explicitClose = round.closes_at ? new Date(round.closes_at) : null;
   const globalDeadline = explicitClose && explicitClose < configuredDeadline ? explicitClose : configuredDeadline;
   const secondsUntilGlobalDeadline = Math.floor((globalDeadline.getTime() - now.getTime()) / 1000);
 
-  if (secondsUntilGlobalDeadline <= 0) {
-    return NextResponse.json({ error: 'This challenge has ended.' }, { status: 400 });
-  }
+  if (secondsUntilGlobalDeadline <= 0) return NextResponse.json({ error: 'This challenge has ended.' }, { status: 400 });
 
   const effectiveDurationSeconds = Math.min(configuredDuration, secondsUntilGlobalDeadline);
 
   const { data: subjects, error: subjectsError } = await admin.from('subjects').select('id').in('id', selected_subject_ids);
-  if (subjectsError || !subjects || subjects.length !== 3) {
-    return NextResponse.json({ error: 'One or more selected subjects are invalid.' }, { status: 400 });
-  }
+  if (subjectsError || !subjects || subjects.length !== 3) return NextResponse.json({ error: 'One or more selected subjects are invalid.' }, { status: 400 });
 
   const { data: existingParticipant } = await admin
     .from('utme_challenge_participants')
@@ -68,9 +66,7 @@ export async function POST(request: Request) {
     .eq('student_id', caller.id)
     .maybeSingle();
 
-  if (existingParticipant?.exam_attempt_id) {
-    return NextResponse.json({ participant_id: existingParticipant.id, attempt_id: existingParticipant.exam_attempt_id });
-  }
+  if (existingParticipant?.exam_attempt_id) return NextResponse.json({ participant_id: existingParticipant.id, attempt_id: existingParticipant.exam_attempt_id });
 
   let participantId = existingParticipant?.id ?? null;
   if (!participantId) {
@@ -100,9 +96,7 @@ export async function POST(request: Request) {
     console.error('Challenge question generation error:', generateError);
     return NextResponse.json({ error: generateError.message || 'Could not generate your challenge questions.' }, { status: 500 });
   }
-  if (generatedCount !== 180) {
-    return NextResponse.json({ error: `The challenge paper could not be created correctly. Expected 180 questions but received ${generatedCount}.` }, { status: 500 });
-  }
+  if (generatedCount !== 180) return NextResponse.json({ error: `The challenge paper could not be created correctly. Expected 180 questions but received ${generatedCount}.` }, { status: 500 });
 
   const { data: lockedQuestions, error: lockedError } = await admin
     .from('utme_challenge_questions')
