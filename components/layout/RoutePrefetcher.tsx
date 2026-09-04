@@ -3,16 +3,11 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-const ROUTES = [
-  '/practice',
-  '/mock',
-  '/cbt',
-  '/challenge',
-  '/ai-tutor',
-  '/progress',
-  '/results',
-  '/class-notes',
-];
+const ROUTES = ['/practice', '/mock', '/cbt', '/challenge', '/ai-tutor', '/progress', '/results', '/class-notes'];
+
+type IdleWindow = Window & typeof globalThis & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+};
 
 export default function RoutePrefetcher() {
   const router = useRouter();
@@ -26,17 +21,18 @@ export default function RoutePrefetcher() {
       const next = () => {
         if (index >= ROUTES.length) return;
         router.prefetch(ROUTES[index++]);
-        if ('requestIdleCallback' in window) {
-          window.requestIdleCallback(next, { timeout: 1200 });
+        const idleWindow = window as IdleWindow;
+        if (idleWindow.requestIdleCallback) {
+          idleWindow.requestIdleCallback(next, { timeout: 1200 });
         } else {
-          window.setTimeout(next, 180);
+          globalThis.setTimeout(next, 180);
         }
       };
       next();
     };
 
-    const timer = window.setTimeout(prefetch, 1200);
-    return () => window.clearTimeout(timer);
+    const timer = globalThis.setTimeout(prefetch, 1200);
+    return () => globalThis.clearTimeout(timer);
   }, [router]);
 
   return null;
